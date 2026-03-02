@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
-import 'student_settings_screen.dart';
+import 'settings/rollcall_settings_screen.dart';
 import 'settings/lottery_settings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -22,7 +22,7 @@ class SettingsScreen extends StatelessWidget {
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const StudentSettingsScreen()),
+                MaterialPageRoute(builder: (context) => const RollCallSettingsScreen()),
               );
             },
           ),
@@ -68,7 +68,7 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info),
             title: const Text('关于'),
-            subtitle: const Text('SecRandom-lutter v0.0.4'),
+            subtitle: const Text('SecRandom-lutter v0.0.5'),
           )
         ],
       ),

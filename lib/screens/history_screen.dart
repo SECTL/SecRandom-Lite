@@ -158,12 +158,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SingleChildScrollView(
-        controller: _scrollController,
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      body: SafeArea(
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             // 标签页切换
             _buildTabSwitcher(),
             const SizedBox(height: 16),
@@ -394,43 +395,82 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   // 数据表格
                   SizedBox(
                     width: double.infinity,
-                    child: Theme(
-                      data: Theme.of(context).copyWith(
-                        dividerColor: Theme.of(context).dividerColor,
-                      ),
-                      child: DataTable(
-                        headingRowColor: WidgetStateProperty.resolveWith<Color?>(
-                          (Set<WidgetState> states) {
-                            if (Theme.of(context).brightness == Brightness.dark) {
-                              return const Color(0xFF303030);
-                            }
-                            return const Color(0xFFFAFAFA);
-                          },
-                        ),
-                        columnSpacing: 24,
-                        horizontalMargin: 24,
-                        sortColumnIndex: _sortColumn,
-                        sortAscending: _sortAscending,
-                        columns: headers.asMap().entries.map((entry) {
-                          return DataColumn(
-                            label: Expanded(child: Center(child: Text(entry.value, style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color)))),
-                            onSort: _canSort(entry.key) ? (columnIndex, ascending) {
-                              setState(() {
-                                _sortColumn = columnIndex;
-                                _sortAscending = ascending;
-                                _resetPagination();
-                              });
-                            } : null,
-                          );
-                        }).toList(),
-                        rows: tableData.map((row) {
-                          return DataRow(
-                            cells: row.map((cell) {
-                              return DataCell(Center(child: Text(cell, style: TextStyle(color: Theme.of(context).textTheme.bodyMedium?.color))));
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final maxWidth = constraints.maxWidth;
+                        final bool isCompact = maxWidth < 600;
+                        final bool isVeryCompact = maxWidth < 430;
+
+                        final double columnSpacing = isVeryCompact
+                            ? 8
+                            : (isCompact ? 12 : 24);
+                        final double horizontalMargin = isVeryCompact
+                            ? 8
+                            : (isCompact ? 12 : 24);
+                        final double? tableFontSize = isVeryCompact
+                            ? 11
+                            : (isCompact ? 12 : null);
+
+                        final baseStyle = Theme.of(context).textTheme.bodyMedium;
+                        final tableTextStyle = baseStyle?.copyWith(
+                          color: baseStyle.color,
+                          fontSize: tableFontSize,
+                        );
+
+                        return Theme(
+                          data: Theme.of(context).copyWith(
+                            dividerColor: Theme.of(context).dividerColor,
+                          ),
+                          child: DataTable(
+                            headingRowColor: WidgetStateProperty.resolveWith<Color?>(
+                              (Set<WidgetState> states) {
+                                if (Theme.of(context).brightness == Brightness.dark) {
+                                  return const Color(0xFF303030);
+                                }
+                                return const Color(0xFFFAFAFA);
+                              },
+                            ),
+                            columnSpacing: columnSpacing,
+                            horizontalMargin: horizontalMargin,
+                            sortColumnIndex: _sortColumn,
+                            sortAscending: _sortAscending,
+                            columns: headers.asMap().entries.map((entry) {
+                              return DataColumn(
+                                headingRowAlignment: MainAxisAlignment.center,
+                                label: Center(
+                                  child: Text(
+                                    entry.value,
+                                    style: tableTextStyle,
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                                onSort: _canSort(entry.key) ? (columnIndex, ascending) {
+                                  setState(() {
+                                    _sortColumn = columnIndex;
+                                    _sortAscending = ascending;
+                                    _resetPagination();
+                                  });
+                                } : null,
+                              );
                             }).toList(),
-                          );
-                        }).toList(),
-                      ),
+                            rows: tableData.map((row) {
+                              return DataRow(
+                                cells: row.map((cell) {
+                                  return DataCell(
+                                    Center(
+                                      child: Text(
+                                        cell,
+                                        style: tableTextStyle,
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              );
+                            }).toList(),
+                          ),
+                        );
+                      },
                     ),
                   ),
                   
@@ -466,7 +506,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ],
               ),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );

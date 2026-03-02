@@ -503,43 +503,57 @@ class _PrizePoolSettingsScreenState extends State<PrizePoolSettingsScreen> {
                     final prize = _prizes[index];
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
-                      child: CheckboxListTile(
-                        value: prize.exist,
-                        onChanged: (value) {
-                          if (value != null && mounted) {
-                            setState(() {
-                              _prizes[index] = prize.copyWith(exist: value);
-                            });
-                            _savePool();
-                          }
-                        },
+                      child: ListTile(
                         title: Text(
                           prize.name,
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            decoration: prize.exist
-                                ? null
-                                : TextDecoration.lineThrough,
+                            decoration: prize.exist ? null : TextDecoration.lineThrough,
                             color: prize.exist ? null : Colors.grey,
                           ),
                         ),
-                        subtitle: Text(
-                          '权重: ${prize.weight} | 数量: ${prize.count}',
-                        ),
-                        secondary: Row(
-                          mainAxisSize: MainAxisSize.min,
+                        subtitle: Row(
                           children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit),
-                              onPressed: () => _editPrize(prize),
-                              tooltip: '编辑',
+                            Checkbox(
+                              value: prize.exist,
+                              visualDensity: VisualDensity.compact,
+                              onChanged: (value) {
+                                if (value != null && mounted) {
+                                  setState(() {
+                                    _prizes[index] = prize.copyWith(exist: value);
+                                  });
+                                  _savePool();
+                                }
+                              },
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.delete),
-                              onPressed: () => _deletePrize(prize),
-                              tooltip: '删除',
+                            Expanded(
+                              child: Text(
+                                '权重: ${prize.weight} | 数量: ${prize.count}',
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: prize.exist ? null : Colors.grey,
+                                ),
+                              ),
                             ),
                           ],
+                        ),
+                        trailing: SizedBox(
+                          width: 96,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit),
+                                onPressed: () => _editPrize(prize),
+                                tooltip: '编辑',
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete),
+                                onPressed: () => _deletePrize(prize),
+                                tooltip: '删除',
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     );
