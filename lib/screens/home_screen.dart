@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import '../widgets/nav_rail.dart';
+
 import '../widgets/control_panel.dart';
 import '../widgets/name_display.dart';
+import '../widgets/nav_rail.dart';
 import 'history_screen.dart';
 import 'lottery_screen.dart';
 import 'settings_screen.dart';
@@ -14,29 +15,54 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static const double _kPhoneLandscapeAspectRatioMin = 1.55;
+  static const double _kPhoneLandscapeMinWidth = 560;
+  static const double _kPhoneMaxShortestSide = 500;
+  static const double _kRailMinWidth = 700;
+  static const double _kPanelWidth = 280;
+  static const double _kPanelGap = 24;
+
   int _selectedIndex = 0;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // 手机/平板断点
-        final bool isWideScreen = constraints.maxWidth > 800;
-        final bool isRailVisible = constraints.maxWidth > 450; 
+        final double aspectRatio = constraints.maxWidth / constraints.maxHeight;
+        final double shortestSide = constraints.biggest.shortestSide;
+        final bool isLandscapePhone =
+            aspectRatio >= _kPhoneLandscapeAspectRatioMin &&
+            constraints.maxWidth >= _kPhoneLandscapeMinWidth &&
+            shortestSide <= _kPhoneMaxShortestSide;
+        final bool isWideScreen = constraints.maxWidth > 800 || isLandscapePhone;
+        final bool isRailVisible = constraints.maxWidth >= _kRailMinWidth;
 
         return Scaffold(
-          bottomNavigationBar: !isRailVisible 
-            ? NavigationBar(
-                selectedIndex: _selectedIndex,
-                onDestinationSelected: (index) => setState(() => _selectedIndex = index),
-                destinations: const [
-                  NavigationDestination(icon: Icon(Icons.people_outline), label: '点名'),
-                  NavigationDestination(icon: Icon(Icons.card_giftcard_outlined), label: '抽奖'),
-                  NavigationDestination(icon: Icon(Icons.history_outlined), label: '历史记录'),
-                  NavigationDestination(icon: Icon(Icons.settings_outlined), label: '设置'),
-                ],
-              )
-            : null,
+          bottomNavigationBar: !isRailVisible
+              ? NavigationBar(
+                  selectedIndex: _selectedIndex,
+                  onDestinationSelected: (index) =>
+                      setState(() => _selectedIndex = index),
+                  destinations: const [
+                    NavigationDestination(
+                      icon: Icon(Icons.people_outline),
+                      label: '点名',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.card_giftcard_outlined),
+                      label: '抽奖',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.history_outlined),
+                      label: '历史记录',
+                    ),
+                    NavigationDestination(
+                      icon: Icon(Icons.settings_outlined),
+                      label: '设置',
+                    ),
+                  ],
+                )
+              : null,
           body: Row(
             children: [
               if (isRailVisible)
@@ -49,78 +75,66 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                 ),
               if (isRailVisible) const VerticalDivider(thickness: 1, width: 1),
-              Expanded(
-                child: _buildBody(isWideScreen),
-              ),
+              Expanded(child: _buildBody(isWideScreen, constraints)),
             ],
           ),
         );
-      }
+      },
     );
   }
 
-  Widget _buildBody(bool isWideScreen) {
+  Widget _buildBody(bool isWideScreen, BoxConstraints viewportConstraints) {
     switch (_selectedIndex) {
       case 0:
         if (isWideScreen) {
-          final screenHeight = MediaQuery.of(context).size.height;
-          final isHeightConstrained = screenHeight < 400;
-          
-          // 宽屏模式下使用 Stack 布局，左侧显示抽取结果，控制面板在右下角
+          final normalPanelAvailableHeight =
+              viewportConstraints.maxHeight - (_kPanelGap * 2);
+          const rightPanelReservedWidth = _kPanelWidth + _kPanelGap;
+
           return Container(
             color: Theme.of(context).colorScheme.surfaceContainer,
             child: Stack(
               children: [
-                // 左侧抽取结果区域 - 只在控制面板左侧区域内显示
-                Positioned(
+                const Positioned(
                   left: 0,
-                  right: isHeightConstrained ? 280 : 304, // 高度不足时减少右边距
+                  right: rightPanelReservedWidth,
                   top: 0,
                   bottom: 0,
                   child: Padding(
-                    padding: const EdgeInsets.all(24.0),
+                    padding: EdgeInsets.all(24),
                     child: NameDisplay(isWideScreen: true),
                   ),
                 ),
-                // 右下角控制面板 - 高度不足时撑满屏幕高度
                 Positioned(
-                  right: isHeightConstrained ? 0 : 24.0,
-                  top: isHeightConstrained ? 0 : null,
-                  bottom: isHeightConstrained ? 0 : 24.0,
-                  child: Container(
-                    height: isHeightConstrained ? double.infinity : null,
-                    decoration: isHeightConstrained ? BoxDecoration(
-                      color: Theme.of(context).cardColor,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 4,
-                          offset: const Offset(-2, 0),
-                        ),
-                      ],
-                    ) : null,
-                    child: const ControlPanel(),
+                  right: _kPanelGap,
+                  bottom: _kPanelGap,
+                  child: SizedBox(
+                    width: _kPanelWidth,
+                    child: ControlPanel(
+                      layoutMode: ControlPanelLayoutMode.autoFit,
+                      availableHeight: normalPanelAvailableHeight,
+                    ),
                   ),
                 ),
               ],
             ),
           );
         } else {
-          // 窄屏模式下使用 Column 布局，抽取结果在上方，控制面板固定在底部
           return Container(
             color: Theme.of(context).colorScheme.surfaceContainer,
             child: Column(
               children: [
-                // 抽取结果区域 - 占据整个可用空间
-                Expanded(
+                const Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.all(16.0),
+                    padding: EdgeInsets.all(16),
                     child: NameDisplay(isWideScreen: false),
                   ),
                 ),
-                // 底部控制面板 - 固定在底部
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0), // 减小内边距
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
                   decoration: BoxDecoration(
                     color: Theme.of(context).cardColor,
                     boxShadow: [

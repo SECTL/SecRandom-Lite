@@ -68,7 +68,7 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info),
             title: const Text('关于'),
-            subtitle: const Text('SecRandom-lutter v0.0.5'),
+            subtitle: const Text('SecRandom-lutter v0.0.6'),
           )
         ],
       ),

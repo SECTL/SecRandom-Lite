@@ -2,44 +2,124 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 
+enum ControlPanelLayoutMode {
+  auto,
+  autoFit,
+  normal,
+  compact,
+  ultraCompact,
+}
+
 class ControlPanel extends StatelessWidget {
-  const ControlPanel({super.key});
+  const ControlPanel({
+    super.key,
+    this.layoutMode = ControlPanelLayoutMode.auto,
+    this.availableHeight,
+    this.fillHeight = false,
+  });
+
+  final ControlPanelLayoutMode layoutMode;
+  final double? availableHeight;
+  final bool fillHeight;
 
   @override
   Widget build(BuildContext context) {
     final appProvider = Provider.of<AppProvider>(context);
-    final screenHeight = MediaQuery.of(context).size.height;
+    final viewportHeight = availableHeight ?? MediaQuery.of(context).size.height;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 800;
-        final isHeightConstrained = screenHeight < 400;
-
-        return Card(
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(isCompact ? 12 : 16)),
-          color: Theme.of(context).cardColor,
-          child: Container(
-            width: isCompact ? null : 280,
-            constraints: BoxConstraints(
-              minWidth: isCompact ? 0 : 280,
-              maxWidth: isCompact ? double.infinity : 320,
-            ),
-            padding: EdgeInsets.all(isCompact ? 8.0 : 20.0),
-            child: _buildLayout(context, appProvider, isCompact, isHeightConstrained),
-          ),
+        final resolvedMode = _resolveLayoutMode(
+          constraints.maxWidth,
+          viewportHeight,
+        );
+        if (resolvedMode == ControlPanelLayoutMode.autoFit) {
+          return _AutoFitControlPanel(
+            panel: this,
+            appProvider: appProvider,
+            availableHeight: viewportHeight,
+            fillHeight: fillHeight,
+          );
+        }
+        return _buildCard(
+          context,
+          appProvider,
+          resolvedMode,
+          fillHeight: fillHeight,
         );
       },
     );
   }
 
-  Widget _buildLayout(BuildContext context, AppProvider appProvider, bool isCompact, bool isHeightConstrained) {
+  ControlPanelLayoutMode _resolveLayoutMode(double maxWidth, double currentHeight) {
+    if (layoutMode == ControlPanelLayoutMode.autoFit) {
+      return ControlPanelLayoutMode.autoFit;
+    }
+    if (layoutMode != ControlPanelLayoutMode.auto) {
+      return layoutMode;
+    }
+
+    final isCompact = maxWidth < 800;
+    final isHeightConstrained = currentHeight < 400;
     if (isHeightConstrained) {
-      return _buildUltraCompactLayout(context, appProvider);
-    } else if (!isCompact) {
-      return _buildNormalLayout(context, appProvider);
-    } else {
-      return _buildCompactLayout(context, appProvider);
+      return ControlPanelLayoutMode.ultraCompact;
+    }
+    if (isCompact) {
+      return ControlPanelLayoutMode.compact;
+    }
+    return ControlPanelLayoutMode.normal;
+  }
+
+  Widget _buildCard(
+    BuildContext context,
+    AppProvider appProvider,
+    ControlPanelLayoutMode resolvedMode, {
+    required bool fillHeight,
+    Key? measureKey,
+  }) {
+    final isCompactMode = resolvedMode != ControlPanelLayoutMode.normal;
+    final layout = _buildLayoutByMode(
+      context,
+      appProvider,
+      resolvedMode,
+      fillHeight: fillHeight,
+    );
+    return Card(
+      key: measureKey,
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(isCompactMode ? 12 : 16),
+      ),
+      color: Theme.of(context).cardColor,
+      child: Container(
+        width: isCompactMode ? null : 280,
+        constraints: BoxConstraints(
+          minWidth: isCompactMode ? 0 : 280,
+          maxWidth: isCompactMode ? double.infinity : 320,
+        ),
+        height: fillHeight ? double.infinity : null,
+        padding: EdgeInsets.all(isCompactMode ? 8 : 20),
+        child: layout,
+      ),
+    );
+  }
+
+  Widget _buildLayoutByMode(
+    BuildContext context,
+    AppProvider appProvider,
+    ControlPanelLayoutMode resolvedMode,
+    {required bool fillHeight}
+  ) {
+    switch (resolvedMode) {
+      case ControlPanelLayoutMode.normal:
+        return _buildNormalLayout(context, appProvider);
+      case ControlPanelLayoutMode.compact:
+        return _buildCompactLayout(context, appProvider, fillHeight: fillHeight);
+      case ControlPanelLayoutMode.ultraCompact:
+        return _buildUltraCompactLayout(context, appProvider);
+      case ControlPanelLayoutMode.autoFit:
+      case ControlPanelLayoutMode.auto:
+        return _buildNormalLayout(context, appProvider);
     }
   }
 
@@ -195,11 +275,16 @@ class ControlPanel extends StatelessWidget {
     );
   }
 
-  Widget _buildCompactLayout(BuildContext context, AppProvider appProvider) {
+  Widget _buildCompactLayout(
+    BuildContext context,
+    AppProvider appProvider, {
+    required bool fillHeight,
+  }) {
     final maxCount = appProvider.totalCount;
 
     return Column(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: fillHeight ? MainAxisSize.max : MainAxisSize.min,
+      mainAxisAlignment: fillHeight ? MainAxisAlignment.spaceEvenly : MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // 计数器行
@@ -231,7 +316,7 @@ class ControlPanel extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: fillHeight ? 0 : 12),
 
         // 开始按钮
         SizedBox(
@@ -249,7 +334,7 @@ class ControlPanel extends StatelessWidget {
             child: Text(appProvider.isRolling ? '点名中...' : '开始'),
           ),
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: fillHeight ? 0 : 12),
 
         // 班级下拉菜单
         DropdownButtonFormField<String>(
@@ -273,7 +358,7 @@ class ControlPanel extends StatelessWidget {
           }).toList(),
           onChanged: (value) => appProvider.setSelectedClass(value),
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: fillHeight ? 0 : 12),
 
         // 小组和性别选择在同一行
         Row(
@@ -334,7 +419,7 @@ class ControlPanel extends StatelessWidget {
         ),
 
         // 状态文本
-        const SizedBox(height: 12),
+        SizedBox(height: fillHeight ? 0 : 12),
         const Divider(),
         Padding(
           padding: const EdgeInsets.only(top: 8.0),
@@ -494,5 +579,131 @@ class ControlPanel extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _AutoFitControlPanel extends StatefulWidget {
+  const _AutoFitControlPanel({
+    required this.panel,
+    required this.appProvider,
+    required this.availableHeight,
+    required this.fillHeight,
+  });
+
+  final ControlPanel panel;
+  final AppProvider appProvider;
+  final double availableHeight;
+  final bool fillHeight;
+
+  @override
+  State<_AutoFitControlPanel> createState() => _AutoFitControlPanelState();
+}
+
+class _AutoFitControlPanelState extends State<_AutoFitControlPanel> {
+  final GlobalKey _normalKey = GlobalKey();
+  final GlobalKey _compactKey = GlobalKey();
+  final GlobalKey _ultraKey = GlobalKey();
+
+  ControlPanelLayoutMode _resolvedMode = ControlPanelLayoutMode.normal;
+  bool _pendingMeasurement = false;
+  double _lastWidth = -1;
+  double _lastAvailableHeight = -1;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _scheduleMeasurementIfNeeded(constraints.maxWidth);
+        return Stack(
+          children: [
+            Offstage(
+              child: widget.panel._buildCard(
+                context,
+                widget.appProvider,
+                ControlPanelLayoutMode.normal,
+                fillHeight: false,
+                measureKey: _normalKey,
+              ),
+            ),
+            Offstage(
+              child: widget.panel._buildCard(
+                context,
+                widget.appProvider,
+                ControlPanelLayoutMode.compact,
+                fillHeight: false,
+                measureKey: _compactKey,
+              ),
+            ),
+            Offstage(
+              child: widget.panel._buildCard(
+                context,
+                widget.appProvider,
+                ControlPanelLayoutMode.ultraCompact,
+                fillHeight: false,
+                measureKey: _ultraKey,
+              ),
+            ),
+            widget.panel._buildCard(
+              context,
+              widget.appProvider,
+              _resolvedMode,
+              fillHeight: widget.fillHeight,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _scheduleMeasurementIfNeeded(double width) {
+    final widthChanged = (width - _lastWidth).abs() > 0.5;
+    final heightChanged = (widget.availableHeight - _lastAvailableHeight).abs() > 0.5;
+    if (_pendingMeasurement || (!widthChanged && !heightChanged)) {
+      return;
+    }
+    _lastWidth = width;
+    _lastAvailableHeight = widget.availableHeight;
+    _pendingMeasurement = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pendingMeasurement = false;
+      if (!mounted) {
+        return;
+      }
+      final normalHeight = _readHeight(_normalKey);
+      final compactHeight = _readHeight(_compactKey);
+      final ultraHeight = _readHeight(_ultraKey);
+      final nextMode = _selectMode(normalHeight, compactHeight, ultraHeight, widget.availableHeight);
+      if (nextMode != _resolvedMode) {
+        setState(() {
+          _resolvedMode = nextMode;
+        });
+      }
+    });
+  }
+
+  double _readHeight(GlobalKey key) {
+    final renderObject = key.currentContext?.findRenderObject();
+    if (renderObject is RenderBox) {
+      return renderObject.size.height;
+    }
+    return double.infinity;
+  }
+
+  ControlPanelLayoutMode _selectMode(
+    double normalHeight,
+    double compactHeight,
+    double ultraHeight,
+    double availableHeight,
+  ) {
+    if (normalHeight <= availableHeight) {
+      return ControlPanelLayoutMode.normal;
+    }
+    if (compactHeight <= availableHeight) {
+      return ControlPanelLayoutMode.compact;
+    }
+    if (ultraHeight <= availableHeight) {
+      return ControlPanelLayoutMode.ultraCompact;
+    }
+    return ControlPanelLayoutMode.ultraCompact;
   }
 }

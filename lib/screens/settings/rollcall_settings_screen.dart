@@ -89,6 +89,52 @@ class _RollCallSettingsScreenState extends State<RollCallSettingsScreen> {
     );
   }
 
+  Future<void> _renameClassInList(AppProvider provider, String oldName) async {
+    final nameController = TextEditingController(text: oldName);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('编辑班级'),
+        content: TextField(
+          controller: nameController,
+          decoration: const InputDecoration(
+            labelText: '班级名称',
+            hintText: '请输入班级名称',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, nameController.text.trim()),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+
+    if (result == null || result.isEmpty || result == oldName) return;
+    if (provider.groups.contains(result)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('班级已存在')),
+      );
+      return;
+    }
+
+    try {
+      await provider.renameClass(oldName, result);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('编辑班级失败')),
+      );
+    }
+  }
+
   Future<void> _deleteClass(AppProvider provider, String className, int studentCount) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -187,20 +233,23 @@ class _RollCallSettingsScreenState extends State<RollCallSettingsScreen> {
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   subtitle: Text('学生数量: $existingCount | 总数: $totalCount'),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit),
-                        onPressed: () => _openClass(className),
-                        tooltip: '编辑',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete),
-                        onPressed: () => _deleteClass(provider, className, totalCount),
-                        tooltip: '删除',
-                      ),
-                    ],
+                  trailing: SizedBox(
+                    width: 96,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.edit),
+                          onPressed: () => _renameClassInList(provider, className),
+                          tooltip: '编辑',
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.delete),
+                          onPressed: () => _deleteClass(provider, className, totalCount),
+                          tooltip: '删除',
+                        ),
+                      ],
+                    ),
                   ),
                   onTap: () => _openClass(className),
                 ),
@@ -246,56 +295,6 @@ class _ClassStudentSettingsScreenState extends State<ClassStudentSettingsScreen>
     setState(() {
       _isLoading = false;
     });
-  }
-
-  Future<void> _renameClass(AppProvider provider) async {
-    final nameController = TextEditingController(text: _className);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('编辑班级'),
-        content: TextField(
-          controller: nameController,
-          decoration: const InputDecoration(
-            labelText: '班级名称',
-            hintText: '请输入班级名称',
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, nameController.text.trim()),
-            child: const Text('确定'),
-          ),
-        ],
-      ),
-    );
-
-    if (result == null || result.isEmpty || result == _className) return;
-    if (provider.groups.contains(result)) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('班级已存在')),
-      );
-      return;
-    }
-
-    try {
-      await provider.renameClass(_className, result);
-      if (!mounted) return;
-      setState(() {
-        _className = result;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('编辑班级失败')),
-      );
-    }
   }
 
   Future<void> _addStudent(AppProvider provider) async {

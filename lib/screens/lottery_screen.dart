@@ -14,6 +14,12 @@ class LotteryScreen extends StatefulWidget {
 }
 
 class _LotteryScreenState extends State<LotteryScreen> {
+  static const double _kPhoneLandscapeAspectRatioMin = 1.55;
+  static const double _kPhoneLandscapeMinWidth = 560;
+  static const double _kPhoneMaxShortestSide = 500;
+  static const double _kPanelWidth = 280;
+  static const double _kPanelGap = 24;
+
   final LotteryService _lotteryService = LotteryService();
   final Random _random = Random.secure();
 
@@ -193,21 +199,31 @@ class _LotteryScreenState extends State<LotteryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
-    final isWideScreen = MediaQuery.of(context).size.width > 800;
-    final isHeightConstrained = screenHeight < 400;
-
     return Scaffold(
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : isWideScreen
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final double aspectRatio = constraints.maxWidth / constraints.maxHeight;
+          final double shortestSide = constraints.biggest.shortestSide;
+          final bool isLandscapePhone =
+              aspectRatio >= _kPhoneLandscapeAspectRatioMin &&
+              constraints.maxWidth >= _kPhoneLandscapeMinWidth &&
+              shortestSide <= _kPhoneMaxShortestSide;
+          final bool isWideScreen = constraints.maxWidth > 800 || isLandscapePhone;
+          final double panelAvailableHeight =
+              constraints.maxHeight - (_kPanelGap * 2);
+
+          if (_isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          return isWideScreen
               ? Container(
                   color: Theme.of(context).colorScheme.surfaceContainer,
                   child: Stack(
                     children: [
                       Positioned(
                         left: 0,
-                        right: isHeightConstrained ? 280 : 304,
+                        right: _kPanelWidth + _kPanelGap,
                         top: 0,
                         bottom: 0,
                         child: Padding(
@@ -219,22 +235,13 @@ class _LotteryScreenState extends State<LotteryScreen> {
                         ),
                       ),
                       Positioned(
-                        right: isHeightConstrained ? 0 : 24.0,
-                        top: isHeightConstrained ? 0 : null,
-                        bottom: isHeightConstrained ? 0 : 24.0,
-                        child: Container(
-                          height: isHeightConstrained ? double.infinity : null,
-                          decoration: isHeightConstrained ? BoxDecoration(
-                            color: Theme.of(context).cardColor,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.1),
-                                blurRadius: 4,
-                                offset: const Offset(-2, 0),
-                              ),
-                            ],
-                          ) : null,
+                        right: _kPanelGap,
+                        bottom: _kPanelGap,
+                        child: SizedBox(
+                          width: _kPanelWidth,
                           child: LotteryControlPanel(
+                            layoutMode: LotteryControlPanelLayoutMode.autoFit,
+                            availableHeight: panelAvailableHeight,
                             prizePools: _prizePools,
                             selectedPool: _selectedPool,
                             drawCount: _drawCount,
@@ -309,7 +316,9 @@ class _LotteryScreenState extends State<LotteryScreen> {
                       ),
                     ],
                   ),
-                ),
+                );
+        },
+      ),
     );
   }
 }
@@ -409,7 +418,18 @@ class LotteryResultDisplay extends StatelessWidget {
   }
 }
 
+enum LotteryControlPanelLayoutMode {
+  auto,
+  autoFit,
+  normal,
+  compact,
+  ultraCompact,
+}
+
 class LotteryControlPanel extends StatelessWidget {
+  final LotteryControlPanelLayoutMode layoutMode;
+  final double? availableHeight;
+  final bool fillHeight;
   final List<PrizePool> prizePools;
   final PrizePool? selectedPool;
   final int drawCount;
@@ -422,6 +442,9 @@ class LotteryControlPanel extends StatelessWidget {
 
   const LotteryControlPanel({
     super.key,
+    this.layoutMode = LotteryControlPanelLayoutMode.auto,
+    this.availableHeight,
+    this.fillHeight = false,
     required this.prizePools,
     required this.selectedPool,
     required this.drawCount,
@@ -435,38 +458,80 @@ class LotteryControlPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
+    final viewportHeight = availableHeight ?? MediaQuery.of(context).size.height;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isCompact = constraints.maxWidth < 800;
-        final isHeightConstrained = screenHeight < 400;
-
-        return Card(
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(isCompact ? 12 : 16)),
-          color: Theme.of(context).cardColor,
-          child: Container(
-            width: isCompact ? null : 280,
-            constraints: BoxConstraints(
-              minWidth: isCompact ? 0 : 280,
-              maxWidth: isCompact ? double.infinity : 320,
-            ),
-            padding: EdgeInsets.all(isCompact ? 8.0 : 20.0),
-            child: _buildLayout(context, isCompact, isHeightConstrained),
-          ),
+        final resolvedMode = _resolveLayoutMode(constraints.maxWidth, viewportHeight);
+        if (resolvedMode == LotteryControlPanelLayoutMode.autoFit) {
+          return _AutoFitLotteryControlPanel(
+            panel: this,
+            availableHeight: viewportHeight,
+            fillHeight: fillHeight,
+          );
+        }
+        return _buildCard(
+          context,
+          resolvedMode,
+          fillHeight: fillHeight,
         );
       },
     );
   }
 
-  Widget _buildLayout(BuildContext context, bool isCompact, bool isHeightConstrained) {
-    if (isHeightConstrained) {
+  LotteryControlPanelLayoutMode _resolveLayoutMode(double maxWidth, double currentHeight) {
+    if (layoutMode == LotteryControlPanelLayoutMode.autoFit) {
+      return LotteryControlPanelLayoutMode.autoFit;
+    }
+    if (layoutMode != LotteryControlPanelLayoutMode.auto) {
+      return layoutMode;
+    }
+    final isCompact = maxWidth < 800;
+    if (currentHeight < 400) {
+      return LotteryControlPanelLayoutMode.ultraCompact;
+    }
+    if (isCompact) {
+      return LotteryControlPanelLayoutMode.compact;
+    }
+    return LotteryControlPanelLayoutMode.normal;
+  }
+
+  Widget _buildCard(
+    BuildContext context,
+    LotteryControlPanelLayoutMode resolvedMode, {
+    required bool fillHeight,
+    Key? measureKey,
+  }) {
+    final isCompact = resolvedMode != LotteryControlPanelLayoutMode.normal;
+    return Card(
+      key: measureKey,
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(isCompact ? 12 : 16)),
+      color: Theme.of(context).cardColor,
+      child: Container(
+        width: isCompact ? null : 280,
+        constraints: BoxConstraints(
+          minWidth: isCompact ? 0 : 280,
+          maxWidth: isCompact ? double.infinity : 320,
+        ),
+        height: fillHeight ? double.infinity : null,
+        padding: EdgeInsets.all(isCompact ? 8.0 : 20.0),
+        child: _buildLayout(context, resolvedMode, fillHeight: fillHeight),
+      ),
+    );
+  }
+
+  Widget _buildLayout(
+    BuildContext context,
+    LotteryControlPanelLayoutMode resolvedMode, {
+    required bool fillHeight,
+  }) {
+    if (resolvedMode == LotteryControlPanelLayoutMode.ultraCompact) {
       return _buildUltraCompactLayout(context);
-    } else if (!isCompact) {
+    } else if (resolvedMode == LotteryControlPanelLayoutMode.normal) {
       return _buildNormalLayout(context);
     } else {
-      return _buildCompactLayout(context);
+      return _buildCompactLayout(context, fillHeight: fillHeight);
     }
   }
 
@@ -565,11 +630,12 @@ class LotteryControlPanel extends StatelessWidget {
     );
   }
 
-  Widget _buildCompactLayout(BuildContext context) {
+  Widget _buildCompactLayout(BuildContext context, {required bool fillHeight}) {
     final maxCount = totalPrizeCount;
 
     return Column(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisSize: fillHeight ? MainAxisSize.max : MainAxisSize.min,
+      mainAxisAlignment: fillHeight ? MainAxisAlignment.spaceEvenly : MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
@@ -600,7 +666,7 @@ class LotteryControlPanel extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: fillHeight ? 0 : 12),
 
         SizedBox(
           height: 44,
@@ -617,7 +683,7 @@ class LotteryControlPanel extends StatelessWidget {
             child: const Text('开始'),
           ),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: fillHeight ? 0 : 8),
 
         OutlinedButton.icon(
           onPressed: onResetDraw,
@@ -631,7 +697,7 @@ class LotteryControlPanel extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: fillHeight ? 0 : 12),
 
         DropdownButtonFormField<PrizePool>(
           value: selectedPool,
@@ -651,9 +717,8 @@ class LotteryControlPanel extends StatelessWidget {
           }).toList(),
           onChanged: onPoolChanged,
         ),
-        const SizedBox(height: 12),
-
-        const SizedBox(height: 12),
+        SizedBox(height: fillHeight ? 0 : 12),
+        SizedBox(height: fillHeight ? 0 : 12),
         const Divider(),
         Padding(
           padding: const EdgeInsets.only(top: 8.0),
@@ -770,5 +835,125 @@ class LotteryControlPanel extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _AutoFitLotteryControlPanel extends StatefulWidget {
+  const _AutoFitLotteryControlPanel({
+    required this.panel,
+    required this.availableHeight,
+    required this.fillHeight,
+  });
+
+  final LotteryControlPanel panel;
+  final double availableHeight;
+  final bool fillHeight;
+
+  @override
+  State<_AutoFitLotteryControlPanel> createState() => _AutoFitLotteryControlPanelState();
+}
+
+class _AutoFitLotteryControlPanelState extends State<_AutoFitLotteryControlPanel> {
+  final GlobalKey _normalKey = GlobalKey();
+  final GlobalKey _compactKey = GlobalKey();
+  final GlobalKey _ultraKey = GlobalKey();
+
+  LotteryControlPanelLayoutMode _resolvedMode = LotteryControlPanelLayoutMode.normal;
+  bool _pendingMeasurement = false;
+  double _lastWidth = -1;
+  double _lastAvailableHeight = -1;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _scheduleMeasurementIfNeeded(constraints.maxWidth);
+        return Stack(
+          children: [
+            Offstage(
+              child: widget.panel._buildCard(
+                context,
+                LotteryControlPanelLayoutMode.normal,
+                fillHeight: false,
+                measureKey: _normalKey,
+              ),
+            ),
+            Offstage(
+              child: widget.panel._buildCard(
+                context,
+                LotteryControlPanelLayoutMode.compact,
+                fillHeight: false,
+                measureKey: _compactKey,
+              ),
+            ),
+            Offstage(
+              child: widget.panel._buildCard(
+                context,
+                LotteryControlPanelLayoutMode.ultraCompact,
+                fillHeight: false,
+                measureKey: _ultraKey,
+              ),
+            ),
+            widget.panel._buildCard(
+              context,
+              _resolvedMode,
+              fillHeight: widget.fillHeight,
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _scheduleMeasurementIfNeeded(double width) {
+    final widthChanged = (width - _lastWidth).abs() > 0.5;
+    final heightChanged = (widget.availableHeight - _lastAvailableHeight).abs() > 0.5;
+    if (_pendingMeasurement || (!widthChanged && !heightChanged)) {
+      return;
+    }
+    _lastWidth = width;
+    _lastAvailableHeight = widget.availableHeight;
+    _pendingMeasurement = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pendingMeasurement = false;
+      if (!mounted) {
+        return;
+      }
+      final normalHeight = _readHeight(_normalKey);
+      final compactHeight = _readHeight(_compactKey);
+      final ultraHeight = _readHeight(_ultraKey);
+      final nextMode = _selectMode(normalHeight, compactHeight, ultraHeight, widget.availableHeight);
+      if (nextMode != _resolvedMode) {
+        setState(() {
+          _resolvedMode = nextMode;
+        });
+      }
+    });
+  }
+
+  double _readHeight(GlobalKey key) {
+    final renderObject = key.currentContext?.findRenderObject();
+    if (renderObject is RenderBox) {
+      return renderObject.size.height;
+    }
+    return double.infinity;
+  }
+
+  LotteryControlPanelLayoutMode _selectMode(
+    double normalHeight,
+    double compactHeight,
+    double ultraHeight,
+    double availableHeight,
+  ) {
+    if (normalHeight <= availableHeight) {
+      return LotteryControlPanelLayoutMode.normal;
+    }
+    if (compactHeight <= availableHeight) {
+      return LotteryControlPanelLayoutMode.compact;
+    }
+    if (ultraHeight <= availableHeight) {
+      return LotteryControlPanelLayoutMode.ultraCompact;
+    }
+    return LotteryControlPanelLayoutMode.ultraCompact;
   }
 }
