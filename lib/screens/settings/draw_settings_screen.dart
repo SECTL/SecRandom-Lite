@@ -29,12 +29,6 @@ class DrawSettingsScreen extends StatelessWidget {
                 value: appProvider.fairDrawEnabled,
                 onChanged: appProvider.setFairDrawEnabled,
               ),
-              const Divider(height: 1),
-              const ListTile(
-                leading: Icon(Icons.info_outline),
-                title: Text('当前策略'),
-                subtitle: Text('公平抽取与不重复抽取互不冲突，可独立开关。'),
-              ),
             ],
           );
         },

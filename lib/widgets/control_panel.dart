@@ -266,7 +266,7 @@ class ControlPanel extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(top: 12.0),
           child: Text(
-            '总人数: ${appProvider.totalCount} | 剩余: ${appProvider.remainingCount}',
+            '剩余: ${appProvider.remainingCount} | 总数: ${appProvider.totalCount}',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
             textAlign: TextAlign.center,
           ),
@@ -424,7 +424,7 @@ class ControlPanel extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(top: 8.0),
           child: Text(
-            '${appProvider.totalCount}/${appProvider.remainingCount}',
+            '剩余: ${appProvider.remainingCount} | 总数: ${appProvider.totalCount}',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 11),
             textAlign: TextAlign.center,
           ),
@@ -572,7 +572,7 @@ class ControlPanel extends StatelessWidget {
 
           // 状态文本
           Text(
-            '${appProvider.totalCount}/${appProvider.remainingCount}',
+            '剩余: ${appProvider.remainingCount} | 总数: ${appProvider.totalCount}',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 10),
             textAlign: TextAlign.center,
           ),

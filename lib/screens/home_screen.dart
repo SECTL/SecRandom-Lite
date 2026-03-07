@@ -21,6 +21,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const double _kRailMinWidth = 700;
   static const double _kPanelWidth = 280;
   static const double _kPanelGap = 24;
+  static const double _kNarrowPanelHeight = 300;
 
   int _selectedIndex = 0;
 
@@ -145,7 +146,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                   ),
-                  child: const ControlPanel(),
+                  child: const SizedBox(
+                    height: _kNarrowPanelHeight,
+                    child: ControlPanel(),
+                  ),
                 ),
               ],
             ),

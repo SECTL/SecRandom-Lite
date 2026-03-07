@@ -19,6 +19,7 @@ class _LotteryScreenState extends State<LotteryScreen> {
   static const double _kPhoneMaxShortestSide = 500;
   static const double _kPanelWidth = 280;
   static const double _kPanelGap = 24;
+  static const double _kNarrowPanelHeight = 300;
 
   final LotteryService _lotteryService = LotteryService();
   final Random _random = Random.secure();
@@ -28,9 +29,9 @@ class _LotteryScreenState extends State<LotteryScreen> {
 
   List<PrizePool> _prizePools = [];
   List<Prize> _prizes = [];
-  
+
   PrizePool? _selectedPool;
-  
+
   int _drawCount = 1;
 
   @override
@@ -48,7 +49,7 @@ class _LotteryScreenState extends State<LotteryScreen> {
   Future<void> _loadData() async {
     try {
       final pools = await _lotteryService.loadPrizePools();
-       
+
       if (mounted) {
         setState(() {
           _prizePools = pools;
@@ -127,14 +128,17 @@ class _LotteryScreenState extends State<LotteryScreen> {
 
       final List<LotteryRecord> rollingRecords = [];
       for (int i = 0; i < _drawCount; i++) {
-        final randomPrize = availablePrizes[_random.nextInt(availablePrizes.length)];
-        rollingRecords.add(LotteryRecord(
-          id: DateTime.now().millisecondsSinceEpoch.toString() + '_$i',
-          poolName: pool.name,
-          prizeName: randomPrize.name,
-          drawTime: DateTime.now(),
-          drawCount: 1,
-        ));
+        final randomPrize =
+            availablePrizes[_random.nextInt(availablePrizes.length)];
+        rollingRecords.add(
+          LotteryRecord(
+            id: DateTime.now().millisecondsSinceEpoch.toString() + '_$i',
+            poolName: pool.name,
+            prizeName: randomPrize.name,
+            drawTime: DateTime.now(),
+            drawCount: 1,
+          ),
+        );
       }
 
       if (mounted) {
@@ -162,15 +166,19 @@ class _LotteryScreenState extends State<LotteryScreen> {
 
     try {
       final pool = _selectedPool!;
-      
+
       final prizes = _lotteryService.drawPrizes(_prizes, _drawCount, pool);
-      final records = prizes.map((prize) => LotteryRecord(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        poolName: pool.name,
-        prizeName: prize.name,
-        drawTime: DateTime.now(),
-        drawCount: 1,
-      )).toList();
+      final records = prizes
+          .map(
+            (prize) => LotteryRecord(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              poolName: pool.name,
+              prizeName: prize.name,
+              drawTime: DateTime.now(),
+              drawCount: 1,
+            ),
+          )
+          .toList();
 
       for (var record in records) {
         await _lotteryService.saveLotteryRecord(record);
@@ -181,15 +189,14 @@ class _LotteryScreenState extends State<LotteryScreen> {
           _displayedRecords = records;
         });
       }
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   void _resetDraw() {
     if (_selectedPool == null) return;
-    
+
     _lotteryService.resetDrawnRecords(_selectedPool!.name);
-    
+
     if (mounted) {
       setState(() {
         _displayedRecords = [];
@@ -202,13 +209,15 @@ class _LotteryScreenState extends State<LotteryScreen> {
     return Scaffold(
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final double aspectRatio = constraints.maxWidth / constraints.maxHeight;
+          final double aspectRatio =
+              constraints.maxWidth / constraints.maxHeight;
           final double shortestSide = constraints.biggest.shortestSide;
           final bool isLandscapePhone =
               aspectRatio >= _kPhoneLandscapeAspectRatioMin &&
               constraints.maxWidth >= _kPhoneLandscapeMinWidth &&
               shortestSide <= _kPhoneMaxShortestSide;
-          final bool isWideScreen = constraints.maxWidth > 800 || isLandscapePhone;
+          final bool isWideScreen =
+              constraints.maxWidth > 800 || isLandscapePhone;
           final double panelAvailableHeight =
               constraints.maxHeight - (_kPanelGap * 2);
 
@@ -277,7 +286,10 @@ class _LotteryScreenState extends State<LotteryScreen> {
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8.0,
+                          vertical: 6.0,
+                        ),
                         decoration: BoxDecoration(
                           color: Theme.of(context).cardColor,
                           boxShadow: [
@@ -288,26 +300,29 @@ class _LotteryScreenState extends State<LotteryScreen> {
                             ),
                           ],
                         ),
-                        child: LotteryControlPanel(
-                          prizePools: _prizePools,
-                          selectedPool: _selectedPool,
-                          drawCount: _drawCount,
-                          totalPrizeCount: _totalPrizeCount,
-                          remainingPrizeCount: _remainingPrizeCount,
-                          onPoolChanged: (pool) async {
-                            setState(() {
-                              _selectedPool = pool;
-                              _displayedRecords = [];
-                            });
-                            await _loadPrizes();
-                          },
-                          onDrawCountChanged: (count) {
-                            setState(() {
-                              _drawCount = count;
-                            });
-                          },
-                          onStartDraw: _startDraw,
-                          onResetDraw: _resetDraw,
+                        child: SizedBox(
+                          height: _kNarrowPanelHeight,
+                          child: LotteryControlPanel(
+                            prizePools: _prizePools,
+                            selectedPool: _selectedPool,
+                            drawCount: _drawCount,
+                            totalPrizeCount: _totalPrizeCount,
+                            remainingPrizeCount: _remainingPrizeCount,
+                            onPoolChanged: (pool) async {
+                              setState(() {
+                                _selectedPool = pool;
+                                _displayedRecords = [];
+                              });
+                              await _loadPrizes();
+                            },
+                            onDrawCountChanged: (count) {
+                              setState(() {
+                                _drawCount = count;
+                              });
+                            },
+                            onStartDraw: _startDraw,
+                            onResetDraw: _resetDraw,
+                          ),
                         ),
                       ),
                     ],
@@ -359,21 +374,25 @@ class LotteryResultDisplay extends StatelessWidget {
                 children: records!.map((record) {
                   return AnimatedSwitcher(
                     duration: const Duration(milliseconds: 200),
-                    transitionBuilder: (Widget child, Animation<double> animation) {
-                      return FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(
-                          position: Tween<Offset>(
-                            begin: const Offset(0.0, 0.2),
-                            end: Offset.zero,
-                          ).animate(animation),
-                          child: child,
-                        ),
-                      );
-                    },
+                    transitionBuilder:
+                        (Widget child, Animation<double> animation) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0.0, 0.2),
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: child,
+                            ),
+                          );
+                        },
                     child: Padding(
                       key: ValueKey<String>("${record.id}-${record.prizeName}"),
-                      padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12.0),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24.0,
+                        vertical: 12.0,
+                      ),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -388,7 +407,9 @@ class LotteryResultDisplay extends StatelessWidget {
                             style: TextStyle(
                               fontSize: isWideScreen ? 48 : 36,
                               fontWeight: FontWeight.bold,
-                              color: Theme.of(context).textTheme.bodyLarge?.color,
+                              color: Theme.of(
+                                context,
+                              ).textTheme.bodyLarge?.color,
                             ),
                             textAlign: TextAlign.center,
                           ),
@@ -454,11 +475,15 @@ class LotteryControlPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final viewportHeight = availableHeight ?? MediaQuery.of(context).size.height;
+    final viewportHeight =
+        availableHeight ?? MediaQuery.of(context).size.height;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final resolvedMode = _resolveLayoutMode(constraints.maxWidth, viewportHeight);
+        final resolvedMode = _resolveLayoutMode(
+          constraints.maxWidth,
+          viewportHeight,
+        );
         if (resolvedMode == LotteryControlPanelLayoutMode.autoFit) {
           return _AutoFitLotteryControlPanel(
             panel: this,
@@ -466,16 +491,15 @@ class LotteryControlPanel extends StatelessWidget {
             fillHeight: fillHeight,
           );
         }
-        return _buildCard(
-          context,
-          resolvedMode,
-          fillHeight: fillHeight,
-        );
+        return _buildCard(context, resolvedMode, fillHeight: fillHeight);
       },
     );
   }
 
-  LotteryControlPanelLayoutMode _resolveLayoutMode(double maxWidth, double currentHeight) {
+  LotteryControlPanelLayoutMode _resolveLayoutMode(
+    double maxWidth,
+    double currentHeight,
+  ) {
     if (layoutMode == LotteryControlPanelLayoutMode.autoFit) {
       return LotteryControlPanelLayoutMode.autoFit;
     }
@@ -502,7 +526,9 @@ class LotteryControlPanel extends StatelessWidget {
     return Card(
       key: measureKey,
       elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(isCompact ? 12 : 16)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(isCompact ? 12 : 16),
+      ),
       color: Theme.of(context).cardColor,
       child: Container(
         width: isCompact ? null : 280,
@@ -542,7 +568,9 @@ class LotteryControlPanel extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             IconButton.filledTonal(
-              onPressed: drawCount > 1 ? () => onDrawCountChanged(drawCount - 1) : null,
+              onPressed: drawCount > 1
+                  ? () => onDrawCountChanged(drawCount - 1)
+                  : null,
               icon: const Icon(Icons.remove),
             ),
             Container(
@@ -557,7 +585,9 @@ class LotteryControlPanel extends StatelessWidget {
               ),
             ),
             IconButton.filledTonal(
-              onPressed: drawCount < maxCount ? () => onDrawCountChanged(drawCount + 1) : null,
+              onPressed: drawCount < maxCount
+                  ? () => onDrawCountChanged(drawCount + 1)
+                  : null,
               icon: const Icon(Icons.add),
             ),
           ],
@@ -571,7 +601,10 @@ class LotteryControlPanel extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF66CCFF),
               foregroundColor: Colors.white,
-              textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              textStyle: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -599,16 +632,14 @@ class LotteryControlPanel extends StatelessWidget {
           value: selectedPool,
           decoration: InputDecoration(
             labelText: '奖池',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 10,
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           ),
           items: prizePools.map((pool) {
-            return DropdownMenuItem(
-              value: pool,
-              child: Text(pool.name),
-            );
+            return DropdownMenuItem(value: pool, child: Text(pool.name));
           }).toList(),
           onChanged: onPoolChanged,
         ),
@@ -617,8 +648,10 @@ class LotteryControlPanel extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(top: 12.0),
           child: Text(
-            '总数: $totalPrizeCount | 剩余: $remainingPrizeCount',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
+            '剩余: $remainingPrizeCount | 总数: $totalPrizeCount',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Colors.grey),
             textAlign: TextAlign.center,
           ),
         ),
@@ -631,14 +664,18 @@ class LotteryControlPanel extends StatelessWidget {
 
     return Column(
       mainAxisSize: fillHeight ? MainAxisSize.max : MainAxisSize.min,
-      mainAxisAlignment: fillHeight ? MainAxisAlignment.spaceEvenly : MainAxisAlignment.start,
+      mainAxisAlignment: fillHeight
+          ? MainAxisAlignment.spaceEvenly
+          : MainAxisAlignment.start,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             IconButton.filledTonal(
-              onPressed: drawCount > 1 ? () => onDrawCountChanged(drawCount - 1) : null,
+              onPressed: drawCount > 1
+                  ? () => onDrawCountChanged(drawCount - 1)
+                  : null,
               icon: const Icon(Icons.remove, size: 20),
               padding: const EdgeInsets.all(6),
               constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -649,13 +686,12 @@ class LotteryControlPanel extends StatelessWidget {
                 border: Border.all(color: Theme.of(context).dividerColor),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text(
-                '$drawCount',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+              child: Text('$drawCount', style: Theme.of(context).textTheme.titleLarge),
             ),
             IconButton.filledTonal(
-              onPressed: drawCount < maxCount ? () => onDrawCountChanged(drawCount + 1) : null,
+              onPressed: drawCount < maxCount
+                  ? () => onDrawCountChanged(drawCount + 1)
+                  : null,
               icon: const Icon(Icons.add, size: 20),
               padding: const EdgeInsets.all(6),
               constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -671,7 +707,10 @@ class LotteryControlPanel extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF66CCFF),
               foregroundColor: Colors.white,
-              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              textStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -699,27 +738,24 @@ class LotteryControlPanel extends StatelessWidget {
           value: selectedPool,
           decoration: InputDecoration(
             labelText: '奖池',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 8,
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             isDense: true,
           ),
           items: prizePools.map((pool) {
-            return DropdownMenuItem(
-              value: pool,
-              child: Text(pool.name),
-            );
+            return DropdownMenuItem(value: pool, child: Text(pool.name));
           }).toList(),
           onChanged: onPoolChanged,
         ),
         SizedBox(height: fillHeight ? 0 : 12),
-        SizedBox(height: fillHeight ? 0 : 12),
         const Divider(),
         Padding(
-          padding: const EdgeInsets.only(top: 8.0),
+          padding: const EdgeInsets.only(top: 6.0),
           child: Text(
-            '总数: $totalPrizeCount | 剩余: $remainingPrizeCount',
+            '剩余: $remainingPrizeCount | 总数: $totalPrizeCount',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey),
             textAlign: TextAlign.center,
           ),
@@ -740,13 +776,18 @@ class LotteryControlPanel extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               IconButton.filledTonal(
-                onPressed: drawCount > 1 ? () => onDrawCountChanged(drawCount - 1) : null,
+                onPressed: drawCount > 1
+                    ? () => onDrawCountChanged(drawCount - 1)
+                    : null,
                 icon: const Icon(Icons.remove, size: 18),
                 padding: const EdgeInsets.all(4),
                 constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   border: Border.all(color: Theme.of(context).dividerColor),
                   borderRadius: BorderRadius.circular(6),
@@ -757,7 +798,9 @@ class LotteryControlPanel extends StatelessWidget {
                 ),
               ),
               IconButton.filledTonal(
-                onPressed: drawCount < maxCount ? () => onDrawCountChanged(drawCount + 1) : null,
+                onPressed: drawCount < maxCount
+                    ? () => onDrawCountChanged(drawCount + 1)
+                    : null,
                 icon: const Icon(Icons.add, size: 18),
                 padding: const EdgeInsets.all(4),
                 constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
@@ -773,7 +816,10 @@ class LotteryControlPanel extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF66CCFF),
                 foregroundColor: Colors.white,
-                textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                textStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(6),
                 ),
@@ -805,15 +851,15 @@ class LotteryControlPanel extends StatelessWidget {
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(6),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 4,
+              ),
               isDense: true,
               labelStyle: const TextStyle(fontSize: 11),
             ),
             items: prizePools.map((pool) {
-              return DropdownMenuItem(
-                value: pool,
-                child: Text(pool.name),
-              );
+              return DropdownMenuItem(value: pool, child: Text(pool.name));
             }).toList(),
             onChanged: onPoolChanged,
           ),
@@ -823,8 +869,10 @@ class LotteryControlPanel extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(top: 6.0),
             child: Text(
-              '总数: $totalPrizeCount | 剩余: $remainingPrizeCount',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 10),
+              '剩余: $remainingPrizeCount | 总数: $totalPrizeCount',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 10),
               textAlign: TextAlign.center,
             ),
           ),
@@ -846,15 +894,18 @@ class _AutoFitLotteryControlPanel extends StatefulWidget {
   final bool fillHeight;
 
   @override
-  State<_AutoFitLotteryControlPanel> createState() => _AutoFitLotteryControlPanelState();
+  State<_AutoFitLotteryControlPanel> createState() =>
+      _AutoFitLotteryControlPanelState();
 }
 
-class _AutoFitLotteryControlPanelState extends State<_AutoFitLotteryControlPanel> {
+class _AutoFitLotteryControlPanelState
+    extends State<_AutoFitLotteryControlPanel> {
   final GlobalKey _normalKey = GlobalKey();
   final GlobalKey _compactKey = GlobalKey();
   final GlobalKey _ultraKey = GlobalKey();
 
-  LotteryControlPanelLayoutMode _resolvedMode = LotteryControlPanelLayoutMode.normal;
+  LotteryControlPanelLayoutMode _resolvedMode =
+      LotteryControlPanelLayoutMode.normal;
   bool _pendingMeasurement = false;
   double _lastWidth = -1;
   double _lastAvailableHeight = -1;
@@ -903,7 +954,8 @@ class _AutoFitLotteryControlPanelState extends State<_AutoFitLotteryControlPanel
 
   void _scheduleMeasurementIfNeeded(double width) {
     final widthChanged = (width - _lastWidth).abs() > 0.5;
-    final heightChanged = (widget.availableHeight - _lastAvailableHeight).abs() > 0.5;
+    final heightChanged =
+        (widget.availableHeight - _lastAvailableHeight).abs() > 0.5;
     if (_pendingMeasurement || (!widthChanged && !heightChanged)) {
       return;
     }
@@ -918,7 +970,12 @@ class _AutoFitLotteryControlPanelState extends State<_AutoFitLotteryControlPanel
       final normalHeight = _readHeight(_normalKey);
       final compactHeight = _readHeight(_compactKey);
       final ultraHeight = _readHeight(_ultraKey);
-      final nextMode = _selectMode(normalHeight, compactHeight, ultraHeight, widget.availableHeight);
+      final nextMode = _selectMode(
+        normalHeight,
+        compactHeight,
+        ultraHeight,
+        widget.availableHeight,
+      );
       if (nextMode != _resolvedMode) {
         setState(() {
           _resolvedMode = nextMode;
