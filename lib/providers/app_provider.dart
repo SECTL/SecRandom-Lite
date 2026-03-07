@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../models/app_config.dart';
 import '../models/history_record.dart';
 import '../models/student.dart';
@@ -23,6 +23,7 @@ class AppProvider with ChangeNotifier {
 
   int _selectCount = 1;
   bool _fairDrawEnabled = true;
+  bool _nonRepeatEnabled = true;
   String? _selectedClass;
   String? _selectedGroup;
   String? _selectedGender;
@@ -35,6 +36,7 @@ class AppProvider with ChangeNotifier {
   int get remainingCount => _remainingStudents.length;
   int get totalCount => _filteredStudents().length;
   bool get fairDrawEnabled => _fairDrawEnabled;
+  bool get nonRepeatEnabled => _nonRepeatEnabled;
   String? get selectedClass => _selectedClass;
   String? get selectedGroup => _selectedGroup;
   String? get selectedGender => _selectedGender;
@@ -54,6 +56,7 @@ class AppProvider with ChangeNotifier {
     _themeMode = _parseThemeMode(config.themeMode);
     _selectCount = config.selectCount;
     _fairDrawEnabled = config.fairDrawEnabled;
+    _nonRepeatEnabled = config.nonRepeatEnabled;
     _selectedClass = config.selectedClass;
 
     final jsonClassNames = await _dataService.loadClassNames();
@@ -109,6 +112,7 @@ class AppProvider with ChangeNotifier {
       groups: _groups,
       classGroups: _classGroups,
       fairDrawEnabled: _fairDrawEnabled,
+      nonRepeatEnabled: _nonRepeatEnabled,
     );
     await _dataService.saveConfig(config);
   }
@@ -349,6 +353,13 @@ class AppProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  void setNonRepeatEnabled(bool enabled) {
+    _nonRepeatEnabled = enabled;
+    _resetRemaining();
+    _saveConfig();
+    notifyListeners();
+  }
+
   void setSelectedClass(String? className) {
     _selectedClass = className;
     _selectedGroup = null;
@@ -516,7 +527,7 @@ class AppProvider with ChangeNotifier {
 
     await Future.delayed(const Duration(seconds: 1));
 
-    if (_remainingStudents.length < _selectCount) {
+    if (_nonRepeatEnabled && _remainingStudents.length < _selectCount) {
       _resetRemaining();
     }
 
@@ -524,30 +535,35 @@ class AppProvider with ChangeNotifier {
     final classHistory = _history
         .where((record) => record.className == className)
         .toList();
+    final drawCandidates = _nonRepeatEnabled
+        ? _remainingStudents
+        : _filteredStudents();
 
     List<Student> picked;
     if (_fairDrawEnabled) {
       picked = _fairDrawService.draw(
-        candidates: _remainingStudents,
+        candidates: drawCandidates,
         classHistory: classHistory,
         count: _selectCount,
       );
       if (picked.isEmpty) {
         picked = _randomService.pickRandomStudents(
-          _remainingStudents,
+          drawCandidates,
           _selectCount,
         );
       }
     } else {
       picked = _randomService.pickRandomStudents(
-        _remainingStudents,
+        drawCandidates,
         _selectCount,
       );
     }
     _currentSelection = picked;
 
-    for (final s in picked) {
-      _remainingStudents.removeWhere((r) => r.id == s.id);
+    if (_nonRepeatEnabled) {
+      for (final s in picked) {
+        _remainingStudents.removeWhere((r) => r.id == s.id);
+      }
     }
 
     final now = DateTime.now();
@@ -580,3 +596,7 @@ class AppProvider with ChangeNotifier {
     notifyListeners();
   }
 }
+
+
+
+

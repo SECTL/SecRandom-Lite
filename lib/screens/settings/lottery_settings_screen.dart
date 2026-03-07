@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../../models/prize_pool.dart';
 import '../../models/prize.dart';
@@ -32,7 +32,7 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
 
   Future<void> _loadPrizePools() async {
     if (!mounted) return;
-    
+
     setState(() {
       _isLoading = true;
     });
@@ -40,12 +40,12 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
     try {
       final pools = await _lotteryService.loadPrizePools();
       final Map<String, List<Prize>> prizesMap = {};
-      
+
       for (var pool in pools) {
         final prizes = await _lotteryService.loadPrizes(pool.name);
         prizesMap[pool.name] = prizes;
       }
-      
+
       if (mounted) {
         setState(() {
           _prizePools = pools;
@@ -104,8 +104,7 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
             if (mounted) _loadPrizePools();
           });
         }
-      } catch (e) {
-      }
+      } catch (e) {}
     }
   }
 
@@ -149,9 +148,9 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
     if (result == null || result.isEmpty || result == pool.name) return;
     if (_prizePools.any((p) => p.name == result)) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('奖池已存在')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('奖池已存在')));
       return;
     }
 
@@ -164,9 +163,9 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
       await _loadPrizePools();
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('编辑奖池失败')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('编辑奖池失败')));
     }
   }
 
@@ -193,8 +192,7 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
       try {
         await _lotteryService.deletePrizePool(pool.name);
         await _loadPrizePools();
-      } catch (e) {
-      }
+      } catch (e) {}
     }
   }
 
@@ -240,93 +238,92 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('抽奖设置'),
-      ),
+      appBar: AppBar(title: const Text('抽奖设置')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _prizePools.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.card_giftcard_outlined,
-                        size: 64,
-                        color: Colors.grey[400],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '暂无奖池',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '点击右下角 + 按钮创建新奖池',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[500],
-                        ),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.card_giftcard_outlined,
+                    size: 64,
+                    color: Colors.grey[400],
                   ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _prizePools.length,
-                  itemBuilder: (context, index) {
-                    final pool = _prizePools[index];
-                    final prizes = _poolPrizes[pool.name] ?? [];
-                    final prizeCount = prizes.where((p) => p.exist).length;
-                    final totalCount = _lotteryService.getPrizeTotalCount(pool, prizes);
+                  const SizedBox(height: 16),
+                  Text(
+                    '暂无奖池',
+                    style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '点击右下角 + 按钮创建新奖池',
+                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _prizePools.length,
+              itemBuilder: (context, index) {
+                final pool = _prizePools[index];
+                final prizes = _poolPrizes[pool.name] ?? [];
+                final prizeCount = prizes.where((p) => p.exist).length;
+                final totalCount = _lotteryService.getPrizeTotalCount(
+                  pool,
+                  prizes,
+                );
 
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: GestureDetector(
-                        onLongPressStart: _isMobilePlatform
-                            ? (details) async {
-                                await _showPoolActionMenuAtPosition(pool, details.globalPosition);
-                              }
-                            : null,
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: Theme.of(context).colorScheme.primary,
-                            child: Text(
-                              pool.name[0].toUpperCase(),
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                          ),
-                          title: Text(
-                            pool.name,
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          subtitle: Text('奖品数量: $prizeCount | 总数: $totalCount'),
-                          trailing: _isMobilePlatform
-                              ? null
-                              : PopupMenuButton<_EntryAction>(
-                                  tooltip: '更多',
-                                  onSelected: (action) => _handlePoolAction(pool, action),
-                                  itemBuilder: (context) => const [
-                                    PopupMenuItem<_EntryAction>(
-                                      value: _EntryAction.edit,
-                                      child: Text('编辑'),
-                                    ),
-                                    PopupMenuItem<_EntryAction>(
-                                      value: _EntryAction.delete,
-                                      child: Text('删除'),
-                                    ),
-                                  ],
-                                  icon: const Icon(Icons.more_vert),
-                                ),
-                          onTap: () => _editPrizePool(pool),
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: GestureDetector(
+                    onLongPressStart: _isMobilePlatform
+                        ? (details) async {
+                            await _showPoolActionMenuAtPosition(
+                              pool,
+                              details.globalPosition,
+                            );
+                          }
+                        : null,
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        child: Text(
+                          pool.name[0].toUpperCase(),
+                          style: const TextStyle(color: Colors.white),
                         ),
                       ),
-                    );
-                  },
-                ),
+                      title: Text(
+                        pool.name,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text('奖品数量: $prizeCount | 总数: $totalCount'),
+                      trailing: _isMobilePlatform
+                          ? null
+                          : PopupMenuButton<_EntryAction>(
+                              tooltip: '更多',
+                              onSelected: (action) =>
+                                  _handlePoolAction(pool, action),
+                              itemBuilder: (context) => const [
+                                PopupMenuItem<_EntryAction>(
+                                  value: _EntryAction.edit,
+                                  child: Text('编辑'),
+                                ),
+                                PopupMenuItem<_EntryAction>(
+                                  value: _EntryAction.delete,
+                                  child: Text('删除'),
+                                ),
+                              ],
+                              icon: const Icon(Icons.more_vert),
+                            ),
+                      onTap: () => _editPrizePool(pool),
+                    ),
+                  ),
+                );
+              },
+            ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addPrizePool,
         tooltip: '新建奖池',
@@ -342,7 +339,8 @@ class PrizePoolSettingsScreen extends StatefulWidget {
   const PrizePoolSettingsScreen({super.key, required this.pool});
 
   @override
-  State<PrizePoolSettingsScreen> createState() => _PrizePoolSettingsScreenState();
+  State<PrizePoolSettingsScreen> createState() =>
+      _PrizePoolSettingsScreenState();
 }
 
 class _PrizePoolSettingsScreenState extends State<PrizePoolSettingsScreen> {
@@ -382,8 +380,7 @@ class _PrizePoolSettingsScreenState extends State<PrizePoolSettingsScreen> {
     try {
       await _lotteryService.savePrizePool(_pool);
       await _lotteryService.savePrizes(_pool.name, _prizes);
-    } catch (e) {
-    }
+    } catch (e) {}
   }
 
   Future<void> _addPrize() async {
@@ -466,7 +463,9 @@ class _PrizePoolSettingsScreenState extends State<PrizePoolSettingsScreen> {
 
   Future<void> _editPrize(Prize prize) async {
     final nameController = TextEditingController(text: prize.name);
-    final weightController = TextEditingController(text: prize.weight.toString());
+    final weightController = TextEditingController(
+      text: prize.weight.toString(),
+    );
     final countController = TextEditingController(text: prize.count.toString());
 
     final result = await showDialog<Map<String, dynamic>>(
@@ -478,24 +477,18 @@ class _PrizePoolSettingsScreenState extends State<PrizePoolSettingsScreen> {
           children: [
             TextField(
               controller: nameController,
-              decoration: const InputDecoration(
-                labelText: '奖品名称',
-              ),
+              decoration: const InputDecoration(labelText: '奖品名称'),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: weightController,
-              decoration: const InputDecoration(
-                labelText: '权重',
-              ),
+              decoration: const InputDecoration(labelText: '权重'),
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 12),
             TextField(
               controller: countController,
-              decoration: const InputDecoration(
-                labelText: '数量',
-              ),
+              decoration: const InputDecoration(labelText: '数量'),
               keyboardType: TextInputType.number,
             ),
           ],
@@ -569,103 +562,97 @@ class _PrizePoolSettingsScreenState extends State<PrizePoolSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_pool.name),
-      ),
+      appBar: AppBar(title: Text(_pool.name)),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _prizes.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.card_giftcard_outlined,
-                        size: 64,
-                        color: Colors.grey[400],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '暂无奖品',
-                        style: TextStyle(
-                          fontSize: 18,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '点击右下角 + 按钮添加奖品',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[500],
-                        ),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.card_giftcard_outlined,
+                    size: 64,
+                    color: Colors.grey[400],
                   ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _prizes.length,
-                  itemBuilder: (context, index) {
-                    final prize = _prizes[index];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        title: Text(
-                          prize.name,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            decoration: prize.exist ? null : TextDecoration.lineThrough,
-                            color: prize.exist ? null : Colors.grey,
-                          ),
-                        ),
-                        subtitle: Row(
-                          children: [
-                            Checkbox(
-                              value: prize.exist,
-                              visualDensity: VisualDensity.compact,
-                              onChanged: (value) {
-                                if (value != null && mounted) {
-                                  setState(() {
-                                    _prizes[index] = prize.copyWith(exist: value);
-                                  });
-                                  _savePool();
-                                }
-                              },
-                            ),
-                            Expanded(
-                              child: Text(
-                                '权重: ${prize.weight} | 数量: ${prize.count}',
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: prize.exist ? null : Colors.grey,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        trailing: SizedBox(
-                          width: 96,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.edit),
-                                onPressed: () => _editPrize(prize),
-                                tooltip: '编辑',
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete),
-                                onPressed: () => _deletePrize(prize),
-                                tooltip: '删除',
-                              ),
-                            ],
-                          ),
-                        ),
+                  const SizedBox(height: 16),
+                  Text(
+                    '暂无奖品',
+                    style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '点击右下角 + 按钮添加奖品',
+                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+                  ),
+                ],
+              ),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _prizes.length,
+              itemBuilder: (context, index) {
+                final prize = _prizes[index];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: ListTile(
+                    title: Text(
+                      prize.name,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        decoration: prize.exist
+                            ? null
+                            : TextDecoration.lineThrough,
+                        color: prize.exist ? null : Colors.grey,
                       ),
-                    );
-                  },
-                ),
+                    ),
+                    subtitle: Row(
+                      children: [
+                        Checkbox(
+                          value: prize.exist,
+                          visualDensity: VisualDensity.compact,
+                          onChanged: (value) {
+                            if (value != null && mounted) {
+                              setState(() {
+                                _prizes[index] = prize.copyWith(exist: value);
+                              });
+                              _savePool();
+                            }
+                          },
+                        ),
+                        Expanded(
+                          child: Text(
+                            '权重: ${prize.weight} | 数量: ${prize.count}',
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: prize.exist ? null : Colors.grey,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    trailing: SizedBox(
+                      width: 96,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit),
+                            onPressed: () => _editPrize(prize),
+                            tooltip: '编辑',
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete),
+                            onPressed: () => _deletePrize(prize),
+                            tooltip: '删除',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addPrize,
         tooltip: '添加奖品',

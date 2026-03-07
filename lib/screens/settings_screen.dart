@@ -48,7 +48,7 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.tune),
             title: const Text('抽取设置'),
-            subtitle: const Text('配置点名公平抽取开关'),
+            subtitle: const Text('配置点名公平抽取与不重复抽取开关'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               Navigator.of(context).push(

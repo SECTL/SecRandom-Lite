@@ -15,6 +15,14 @@ class DrawSettingsScreen extends StatelessWidget {
           return ListView(
             children: [
               SwitchListTile(
+                secondary: const Icon(Icons.repeat),
+                title: const Text('启用不重复抽取'),
+                subtitle: const Text('开启后抽中过的学生在本轮不会再次被抽中；关闭后每次都从当前筛选全量中抽取。'),
+                value: appProvider.nonRepeatEnabled,
+                onChanged: appProvider.setNonRepeatEnabled,
+              ),
+              const Divider(height: 1),
+              SwitchListTile(
                 secondary: const Icon(Icons.balance),
                 title: const Text('启用公平抽取'),
                 subtitle: const Text('开启后按历史抽取次数动态计算权重，降低重复抽中概率。'),
@@ -25,7 +33,7 @@ class DrawSettingsScreen extends StatelessWidget {
               const ListTile(
                 leading: Icon(Icons.info_outline),
                 title: Text('当前策略'),
-                subtitle: Text('使用固定参数（频率权重 + 差值保护逻辑），不开放手动调参。'),
+                subtitle: Text('公平抽取与不重复抽取互不冲突，可独立开关。'),
               ),
             ],
           );

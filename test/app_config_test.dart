@@ -23,4 +23,26 @@ void main() {
       expect(json['fair_draw_enabled'], isFalse);
     });
   });
+
+  group('AppConfig non repeat draw', () {
+    test('fromJson should default nonRepeatEnabled to true for old data', () {
+      final config = AppConfig.fromJson({
+        'theme_mode': 'system',
+        'select_count': 1,
+      });
+
+      expect(config.nonRepeatEnabled, isTrue);
+    });
+
+    test('toJson should persist nonRepeatEnabled', () {
+      final config = AppConfig(
+        themeMode: 'dark',
+        selectCount: 2,
+        nonRepeatEnabled: false,
+      );
+
+      final json = config.toJson();
+      expect(json['non_repeat_enabled'], isFalse);
+    });
+  });
 }

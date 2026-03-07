@@ -1,4 +1,4 @@
-class AppConfig {
+﻿class AppConfig {
   final String themeMode; // 'system', 'light', 'dark'
   final int selectCount;
   final String? selectedClass;
@@ -6,6 +6,7 @@ class AppConfig {
   final Map<String, List<String>>
   classGroups; // Map of class name to list of groups
   final bool fairDrawEnabled;
+  final bool nonRepeatEnabled;
 
   AppConfig({
     required this.themeMode,
@@ -14,6 +15,7 @@ class AppConfig {
     this.groups = const ['1'],
     this.classGroups = const {},
     this.fairDrawEnabled = true,
+    this.nonRepeatEnabled = true,
   });
 
   Map<String, dynamic> toJson() {
@@ -24,6 +26,7 @@ class AppConfig {
       'groups': groups,
       'class_groups': classGroups,
       'fair_draw_enabled': fairDrawEnabled,
+      'non_repeat_enabled': nonRepeatEnabled,
     };
   }
 
@@ -46,6 +49,7 @@ class AppConfig {
           ) ??
           {},
       fairDrawEnabled: json['fair_draw_enabled'] as bool? ?? true,
+      nonRepeatEnabled: json['non_repeat_enabled'] as bool? ?? true,
     );
   }
 
@@ -58,6 +62,7 @@ class AppConfig {
       groups: ['1'],
       classGroups: {},
       fairDrawEnabled: true,
+      nonRepeatEnabled: true,
     );
   }
 }
