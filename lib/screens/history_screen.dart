@@ -27,6 +27,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   int _currentRow = 0; // 当前加载到的行数
   int _totalRows = 0; // 总行数
   bool _isLoading = false; // 是否正在加载数据
+  bool _isInitialLoading = true; // 是否首屏加载中
   bool _hasLoadedAll = false; // 是否已加载全部数据
 
   // 滚动控制器
@@ -57,8 +58,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
           final poolNames = records.map((r) => r.poolName).toSet().toList()..sort();
           _selectedPool = poolNames.isNotEmpty ? poolNames.first : null;
         }
+        _isInitialLoading = false;
       });
     } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isInitialLoading = false;
+        });
+      }
       print('加载抽奖历史失败: $e');
     }
   }
@@ -108,6 +115,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isInitialLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
     final appProvider = Provider.of<AppProvider>(context);
     final allStudents = appProvider.allStudents;
     final history = appProvider.history;

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../../models/student.dart';
 import '../../providers/app_provider.dart';
+
+enum _EntryAction { edit, delete }
 
 class RollCallSettingsScreen extends StatefulWidget {
   const RollCallSettingsScreen({super.key});
@@ -12,6 +15,11 @@ class RollCallSettingsScreen extends StatefulWidget {
 
 class _RollCallSettingsScreenState extends State<RollCallSettingsScreen> {
   bool _isLoading = true;
+  bool get _isMobilePlatform {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
 
   @override
   void initState() {
@@ -165,6 +173,52 @@ class _RollCallSettingsScreenState extends State<RollCallSettingsScreen> {
     }
   }
 
+  Future<void> _handleClassAction(
+    AppProvider provider,
+    String className,
+    int totalCount,
+    _EntryAction action,
+  ) async {
+    switch (action) {
+      case _EntryAction.edit:
+        await _renameClassInList(provider, className);
+        break;
+      case _EntryAction.delete:
+        await _deleteClass(provider, className, totalCount);
+        break;
+    }
+  }
+
+  Future<void> _showClassActionMenuAtPosition(
+    AppProvider provider,
+    String className,
+    int totalCount,
+    Offset globalPosition,
+  ) async {
+    final action = await showMenu<_EntryAction>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        globalPosition.dx,
+        globalPosition.dy,
+        globalPosition.dx,
+        globalPosition.dy,
+      ),
+      items: const [
+        PopupMenuItem<_EntryAction>(
+          value: _EntryAction.edit,
+          child: Text('编辑'),
+        ),
+        PopupMenuItem<_EntryAction>(
+          value: _EntryAction.delete,
+          child: Text('删除'),
+        ),
+      ],
+    );
+
+    if (action == null || !mounted) return;
+    await _handleClassAction(provider, className, totalCount, action);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -220,38 +274,50 @@ class _RollCallSettingsScreenState extends State<RollCallSettingsScreen> {
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    child: Text(
-                      className.isEmpty ? '?' : className[0].toUpperCase(),
-                      style: const TextStyle(color: Colors.white),
+                child: GestureDetector(
+                  onLongPressStart: _isMobilePlatform
+                      ? (details) async {
+                          await _showClassActionMenuAtPosition(
+                            provider,
+                            className,
+                            totalCount,
+                            details.globalPosition,
+                          );
+                        }
+                      : null,
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      child: Text(
+                        className.isEmpty ? '?' : className[0].toUpperCase(),
+                        style: const TextStyle(color: Colors.white),
+                      ),
                     ),
-                  ),
-                  title: Text(
-                    className,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Text('学生数量: $existingCount | 总数: $totalCount'),
-                  trailing: SizedBox(
-                    width: 96,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.edit),
-                          onPressed: () => _renameClassInList(provider, className),
-                          tooltip: '编辑',
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.delete),
-                          onPressed: () => _deleteClass(provider, className, totalCount),
-                          tooltip: '删除',
-                        ),
-                      ],
+                    title: Text(
+                      className,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
+                    subtitle: Text('学生数量: $existingCount | 总数: $totalCount'),
+                    trailing: _isMobilePlatform
+                        ? null
+                        : PopupMenuButton<_EntryAction>(
+                            tooltip: '更多',
+                            onSelected: (action) =>
+                                _handleClassAction(provider, className, totalCount, action),
+                            itemBuilder: (context) => const [
+                              PopupMenuItem<_EntryAction>(
+                                value: _EntryAction.edit,
+                                child: Text('编辑'),
+                              ),
+                              PopupMenuItem<_EntryAction>(
+                                value: _EntryAction.delete,
+                                child: Text('删除'),
+                              ),
+                            ],
+                            icon: const Icon(Icons.more_vert),
+                          ),
+                    onTap: () => _openClass(className),
                   ),
-                  onTap: () => _openClass(className),
                 ),
               );
             },

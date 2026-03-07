@@ -1,7 +1,10 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../../models/prize_pool.dart';
 import '../../models/prize.dart';
 import '../../services/lottery_service.dart';
+
+enum _EntryAction { edit, delete }
 
 class LotterySettingsScreen extends StatefulWidget {
   const LotterySettingsScreen({super.key});
@@ -15,6 +18,11 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
   List<PrizePool> _prizePools = [];
   Map<String, List<Prize>> _poolPrizes = {};
   bool _isLoading = true;
+  bool get _isMobilePlatform {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
 
   @override
   void initState() {
@@ -190,6 +198,45 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
     }
   }
 
+  Future<void> _handlePoolAction(PrizePool pool, _EntryAction action) async {
+    switch (action) {
+      case _EntryAction.edit:
+        await _renamePrizePool(pool);
+        break;
+      case _EntryAction.delete:
+        await _deletePrizePool(pool);
+        break;
+    }
+  }
+
+  Future<void> _showPoolActionMenuAtPosition(
+    PrizePool pool,
+    Offset globalPosition,
+  ) async {
+    final action = await showMenu<_EntryAction>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        globalPosition.dx,
+        globalPosition.dy,
+        globalPosition.dx,
+        globalPosition.dy,
+      ),
+      items: const [
+        PopupMenuItem<_EntryAction>(
+          value: _EntryAction.edit,
+          child: Text('编辑'),
+        ),
+        PopupMenuItem<_EntryAction>(
+          value: _EntryAction.delete,
+          child: Text('删除'),
+        ),
+      ],
+    );
+
+    if (action == null || !mounted) return;
+    await _handlePoolAction(pool, action);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -238,38 +285,44 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
 
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Theme.of(context).colorScheme.primary,
-                          child: Text(
-                            pool.name[0].toUpperCase(),
-                            style: const TextStyle(color: Colors.white),
+                      child: GestureDetector(
+                        onLongPressStart: _isMobilePlatform
+                            ? (details) async {
+                                await _showPoolActionMenuAtPosition(pool, details.globalPosition);
+                              }
+                            : null,
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: Theme.of(context).colorScheme.primary,
+                            child: Text(
+                              pool.name[0].toUpperCase(),
+                              style: const TextStyle(color: Colors.white),
+                            ),
                           ),
-                        ),
-                        title: Text(
-                          pool.name,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text('奖品数量: $prizeCount | 总数: $totalCount'),
-                        trailing: SizedBox(
-                          width: 96,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.edit),
-                                onPressed: () => _renamePrizePool(pool),
-                                tooltip: '编辑',
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete),
-                                onPressed: () => _deletePrizePool(pool),
-                                tooltip: '删除',
-                              ),
-                            ],
+                          title: Text(
+                            pool.name,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
                           ),
+                          subtitle: Text('奖品数量: $prizeCount | 总数: $totalCount'),
+                          trailing: _isMobilePlatform
+                              ? null
+                              : PopupMenuButton<_EntryAction>(
+                                  tooltip: '更多',
+                                  onSelected: (action) => _handlePoolAction(pool, action),
+                                  itemBuilder: (context) => const [
+                                    PopupMenuItem<_EntryAction>(
+                                      value: _EntryAction.edit,
+                                      child: Text('编辑'),
+                                    ),
+                                    PopupMenuItem<_EntryAction>(
+                                      value: _EntryAction.delete,
+                                      child: Text('删除'),
+                                    ),
+                                  ],
+                                  icon: const Icon(Icons.more_vert),
+                                ),
+                          onTap: () => _editPrizePool(pool),
                         ),
-                        onTap: () => _editPrizePool(pool),
                       ),
                     );
                   },

@@ -32,7 +32,6 @@ class _LotteryScreenState extends State<LotteryScreen> {
   PrizePool? _selectedPool;
   
   int _drawCount = 1;
-  bool _isLoading = true;
 
   @override
   void dispose() {
@@ -53,7 +52,6 @@ class _LotteryScreenState extends State<LotteryScreen> {
       if (mounted) {
         setState(() {
           _prizePools = pools;
-          _isLoading = false;
           if (_prizePools.isNotEmpty) {
             _selectedPool = _prizePools.first;
           }
@@ -62,10 +60,12 @@ class _LotteryScreenState extends State<LotteryScreen> {
           await _loadPrizes();
         }
       }
-    } catch (e) {
+    } catch (_) {
       if (mounted) {
         setState(() {
-          _isLoading = false;
+          _prizePools = [];
+          _selectedPool = null;
+          _prizes = [];
         });
       }
     }
@@ -211,10 +211,6 @@ class _LotteryScreenState extends State<LotteryScreen> {
           final bool isWideScreen = constraints.maxWidth > 800 || isLandscapePhone;
           final double panelAvailableHeight =
               constraints.maxHeight - (_kPanelGap * 2);
-
-          if (_isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
 
           return isWideScreen
               ? Container(
