@@ -45,4 +45,28 @@ void main() {
       expect(json['non_repeat_enabled'], isFalse);
     });
   });
+
+  group('AppConfig result font size', () {
+    test('fromJson should default result font sizes to 48 for old data', () {
+      final config = AppConfig.fromJson({
+        'theme_mode': 'system',
+        'select_count': 1,
+      });
+
+      expect(config.rollcallResultFontSize, 48);
+      expect(config.lotteryResultFontSize, 48);
+    });
+
+    test('toJson should persist result font sizes', () {
+      final config = AppConfig(
+        themeMode: 'dark',
+        rollcallResultFontSize: 52,
+        lotteryResultFontSize: 44,
+      );
+
+      final json = config.toJson();
+      expect(json['rollcall_result_font_size'], 52);
+      expect(json['lottery_result_font_size'], 44);
+    });
+  });
 }

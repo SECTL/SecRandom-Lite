@@ -55,6 +55,7 @@ class _NameDisplayState extends State<NameDisplay> {
   @override
   Widget build(BuildContext context) {
     final appProvider = Provider.of<AppProvider>(context);
+    final double resultFontSize = appProvider.rollcallResultFontSize;
 
     if (appProvider.isRolling) {
       _startRollingAnimation(appProvider);
@@ -110,7 +111,7 @@ class _NameDisplayState extends State<NameDisplay> {
                           child: Text(
                             student.name,
                             style: TextStyle(
-                              fontSize: 48,
+                              fontSize: resultFontSize,
                               fontWeight: FontWeight.bold,
                               color: Theme.of(context).textTheme.bodyLarge?.color,
                             ),
@@ -167,7 +168,7 @@ class _NameDisplayState extends State<NameDisplay> {
                           child: Text(
                             student.name,
                             style: TextStyle(
-                              fontSize: 48,
+                              fontSize: resultFontSize,
                               fontWeight: FontWeight.bold,
                               color: Theme.of(context).textTheme.bodyLarge?.color,
                             ),

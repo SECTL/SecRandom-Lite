@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../models/prize.dart';
 import '../models/prize_pool.dart';
 import '../models/lottery_record.dart';
+import '../providers/app_provider.dart';
 import '../services/lottery_service.dart';
 
 class LotteryScreen extends StatefulWidget {
@@ -346,6 +348,9 @@ class LotteryResultDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final resultFontSize = context.watch<AppProvider>().lotteryResultFontSize;
+    final currentFontSize = isWideScreen ? resultFontSize : resultFontSize * 0.75;
+
     return Center(
       child: records == null || records!.isEmpty
           ? Column(
@@ -405,7 +410,7 @@ class LotteryResultDisplay extends StatelessWidget {
                           Text(
                             record.prizeName,
                             style: TextStyle(
-                              fontSize: isWideScreen ? 48 : 36,
+                              fontSize: currentFontSize,
                               fontWeight: FontWeight.bold,
                               color: Theme.of(
                                 context,

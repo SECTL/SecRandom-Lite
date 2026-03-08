@@ -24,6 +24,8 @@ class AppProvider with ChangeNotifier {
   int _selectCount = 1;
   bool _fairDrawEnabled = true;
   bool _nonRepeatEnabled = true;
+  double _rollcallResultFontSize = 48;
+  double _lotteryResultFontSize = 48;
   String? _selectedClass;
   String? _selectedGroup;
   String? _selectedGender;
@@ -37,6 +39,8 @@ class AppProvider with ChangeNotifier {
   int get totalCount => _filteredStudents().length;
   bool get fairDrawEnabled => _fairDrawEnabled;
   bool get nonRepeatEnabled => _nonRepeatEnabled;
+  double get rollcallResultFontSize => _rollcallResultFontSize;
+  double get lotteryResultFontSize => _lotteryResultFontSize;
   String? get selectedClass => _selectedClass;
   String? get selectedGroup => _selectedGroup;
   String? get selectedGender => _selectedGender;
@@ -57,6 +61,8 @@ class AppProvider with ChangeNotifier {
     _selectCount = config.selectCount;
     _fairDrawEnabled = config.fairDrawEnabled;
     _nonRepeatEnabled = config.nonRepeatEnabled;
+    _rollcallResultFontSize = config.rollcallResultFontSize;
+    _lotteryResultFontSize = config.lotteryResultFontSize;
     _selectedClass = config.selectedClass;
 
     final jsonClassNames = await _dataService.loadClassNames();
@@ -113,6 +119,8 @@ class AppProvider with ChangeNotifier {
       classGroups: _classGroups,
       fairDrawEnabled: _fairDrawEnabled,
       nonRepeatEnabled: _nonRepeatEnabled,
+      rollcallResultFontSize: _rollcallResultFontSize,
+      lotteryResultFontSize: _lotteryResultFontSize,
     );
     await _dataService.saveConfig(config);
   }
@@ -356,6 +364,18 @@ class AppProvider with ChangeNotifier {
   void setNonRepeatEnabled(bool enabled) {
     _nonRepeatEnabled = enabled;
     _resetRemaining();
+    _saveConfig();
+    notifyListeners();
+  }
+
+  void setRollcallResultFontSize(double value) {
+    _rollcallResultFontSize = value.clamp(24.0, 72.0).toDouble();
+    _saveConfig();
+    notifyListeners();
+  }
+
+  void setLotteryResultFontSize(double value) {
+    _lotteryResultFontSize = value.clamp(24.0, 72.0).toDouble();
     _saveConfig();
     notifyListeners();
   }

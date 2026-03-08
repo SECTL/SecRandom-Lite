@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import 'settings/draw_settings_screen.dart';
 import 'settings/lottery_settings_screen.dart';
+import 'settings/personalization_settings_screen.dart';
 import 'settings/rollcall_settings_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -46,7 +47,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           const Divider(),
           ListTile(
-            leading: const Icon(Icons.tune),
+            leading: const Icon(Icons.casino),
             title: const Text('抽取设置'),
             subtitle: const Text('配置点名公平抽取与不重复抽取开关'),
             trailing: const Icon(Icons.chevron_right),
@@ -54,6 +55,20 @@ class SettingsScreen extends StatelessWidget {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) => const DrawSettingsScreen(),
+                ),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.text_fields),
+            title: const Text('个性化'),
+            subtitle: const Text('调整抽人/抽奖结果字号'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const PersonalizationSettingsScreen(),
                 ),
               );
             },
