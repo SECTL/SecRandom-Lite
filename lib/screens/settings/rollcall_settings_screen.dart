@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../../models/student.dart';
 import '../../providers/app_provider.dart';
+import 'student_import_screen.dart';
 
 enum _EntryAction { edit, delete }
 
@@ -434,6 +435,20 @@ class _ClassStudentSettingsScreenState extends State<ClassStudentSettingsScreen>
     }
   }
 
+  Future<void> _openQuickImport() async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => StudentImportScreen(className: _className),
+      ),
+    );
+    if (result == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('学生导入成功')),
+      );
+    }
+  }
+
   Future<_StudentFormData?> _showStudentDialog({Student? initialStudent}) async {
     final nameController = TextEditingController(text: initialStudent?.name ?? '');
     final groupController = TextEditingController(text: initialStudent?.group ?? '1');
@@ -559,7 +574,7 @@ class _ClassStudentSettingsScreenState extends State<ClassStudentSettingsScreen>
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    '点击右下角 + 按钮添加学生',
+                    '点击右下角按钮添加或快速导入学生',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey[500],
@@ -639,10 +654,24 @@ class _ClassStudentSettingsScreenState extends State<ClassStudentSettingsScreen>
         },
       ),
       floatingActionButton: Consumer<AppProvider>(
-        builder: (context, provider, _) => FloatingActionButton(
-          onPressed: () => _addStudent(provider),
-          tooltip: '添加学生',
-          child: const Icon(Icons.add),
+        builder: (context, provider, _) => Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            FloatingActionButton(
+              heroTag: 'quick-import-$_className',
+              onPressed: _openQuickImport,
+              tooltip: '快速导入',
+              child: const Icon(Icons.upload_file),
+            ),
+            const SizedBox(height: 12),
+            FloatingActionButton(
+              heroTag: 'add-student-$_className',
+              onPressed: () => _addStudent(provider),
+              tooltip: '添加学生',
+              child: const Icon(Icons.add),
+            ),
+          ],
         ),
       ),
     );

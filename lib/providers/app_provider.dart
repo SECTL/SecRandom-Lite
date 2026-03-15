@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../models/app_config.dart';
 import '../models/history_record.dart';
 import '../models/student.dart';
@@ -529,6 +529,88 @@ class AppProvider with ChangeNotifier {
     await deleteStudentFromClass(_selectedClass!, id);
   }
 
+  Future<BatchImportResult> batchImportStudents(
+    String className, {
+    required List<String> names,
+    required List<String> genders,
+    required List<String> groups,
+    bool exist = true,
+    int batchSize = 100,
+    Function(int current, int total)? onProgress,
+  }) async {
+    final normalizedClass = className.trim();
+    if (normalizedClass.isEmpty) {
+      return BatchImportResult(successCount: 0, failCount: names.length);
+    }
+
+    if (!_groups.contains(normalizedClass)) {
+      _groups.add(normalizedClass);
+      _groups.sort();
+    }
+
+    int successCount = 0;
+    int failCount = 0;
+    int newId = 1;
+    final classStudents = _allStudents
+        .where((s) => s.className == normalizedClass)
+        .toList();
+    if (classStudents.isNotEmpty) {
+      newId = classStudents.map((s) => s.id).reduce((a, b) => a > b ? a : b) + 1;
+    }
+
+    final totalStudents = names.length;
+    final isLargeBatch = totalStudents > 1000;
+
+    for (int i = 0; i < names.length; i++) {
+      final name = names[i].trim();
+      if (name.isEmpty) {
+        failCount++;
+        continue;
+      }
+
+      String gender = '未知';
+      if (i < genders.length) {
+        final g = genders[i].trim();
+        if (g == '男' || g == '女') {
+          gender = g;
+        }
+      }
+
+      String group = '1';
+      if (i < groups.length) {
+        final grp = groups[i].trim();
+        if (grp.isNotEmpty) {
+          group = grp;
+        }
+      }
+
+      _allStudents.add(
+        Student(
+          id: newId,
+          name: name,
+          gender: gender,
+          group: group,
+          className: normalizedClass,
+          exist: exist,
+        ),
+      );
+      newId++;
+      successCount++;
+
+      if (isLargeBatch && i % batchSize == 0 && onProgress != null) {
+        onProgress(i + 1, totalStudents);
+        await Future.delayed(Duration.zero);
+      }
+    }
+
+    await _dataService.saveStudents(_allStudents);
+    _resetRemaining();
+    await _saveConfig();
+    notifyListeners();
+
+    return BatchImportResult(successCount: successCount, failCount: failCount);
+  }
+
   Future<void> clearHistory({String? className}) async {
     if (className != null) {
       _history = _history.where((record) => record.className != className).toList();
@@ -615,6 +697,18 @@ class AppProvider with ChangeNotifier {
     _isRolling = false;
     notifyListeners();
   }
+}
+
+class BatchImportResult {
+  final int successCount;
+  final int failCount;
+
+  const BatchImportResult({
+    required this.successCount,
+    required this.failCount,
+  });
+
+  int get totalCount => successCount + failCount;
 }
 
 

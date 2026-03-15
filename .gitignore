@@ -63,3 +63,5 @@ app.*.map.json
 key.properties
 upload-keystore-base64.txt
 *.backup
+.wrangler/cache/pages.json
+.wrangler/cache/wrangler-account.json

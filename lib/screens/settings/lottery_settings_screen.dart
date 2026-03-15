@@ -461,6 +461,24 @@ class _PrizePoolSettingsScreenState extends State<PrizePoolSettingsScreen> {
     }
   }
 
+  Future<void> _openQuickImport() async {
+    final result = await Navigator.push<List<Prize>>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PrizeImportScreen(poolName: _pool.name),
+      ),
+    );
+    if (result == null || result.isEmpty || !mounted) return;
+    setState(() {
+      _prizes.addAll(result);
+    });
+    await _savePool();
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('成功导入 ${result.length} 个奖品')));
+  }
+
   Future<void> _editPrize(Prize prize) async {
     final nameController = TextEditingController(text: prize.name);
     final weightController = TextEditingController(
@@ -653,10 +671,513 @@ class _PrizePoolSettingsScreenState extends State<PrizePoolSettingsScreen> {
                 );
               },
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addPrize,
-        tooltip: '添加奖品',
-        child: const Icon(Icons.add),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            onPressed: _openQuickImport,
+            tooltip: '快速导入',
+            heroTag: 'quick-import-${_pool.name}',
+            child: const Icon(Icons.upload_file),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            onPressed: _addPrize,
+            tooltip: '添加奖品',
+            heroTag: 'add_prize_${_pool.name}',
+            child: const Icon(Icons.add),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ParsedPrizeData {
+  final String name;
+  final String weightText;
+  final String countText;
+  final bool isValid;
+  final double? parsedWeight;
+  final int? parsedCount;
+
+  const ParsedPrizeData({
+    required this.name,
+    required this.weightText,
+    required this.countText,
+    required this.isValid,
+    required this.parsedWeight,
+    required this.parsedCount,
+  });
+}
+
+class PrizeImportScreen extends StatefulWidget {
+  final String poolName;
+
+  const PrizeImportScreen({super.key, required this.poolName});
+
+  @override
+  State<PrizeImportScreen> createState() => _PrizeImportScreenState();
+}
+
+class _PrizeImportScreenState extends State<PrizeImportScreen> {
+  final _namesController = TextEditingController();
+  final _weightsController = TextEditingController();
+  final _countsController = TextEditingController();
+
+  List<ParsedPrizeData> _parsedData = [];
+  bool _showPreview = false;
+  bool _isImporting = false;
+  double _importProgress = 0.0;
+  int _importedCount = 0;
+  int _totalCount = 0;
+
+  @override
+  void dispose() {
+    _namesController.dispose();
+    _weightsController.dispose();
+    _countsController.dispose();
+    super.dispose();
+  }
+
+  List<String> _parseLines(String text) {
+    return text
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+  }
+
+  void _parseData() {
+    final names = _parseLines(_namesController.text);
+    final weights = _parseLines(_weightsController.text);
+    final counts = _parseLines(_countsController.text);
+
+    _parsedData = [];
+
+    for (int i = 0; i < names.length; i++) {
+      final name = names[i].trim();
+      final weightText = i < weights.length ? weights[i].trim() : '';
+      final countText = i < counts.length ? counts[i].trim() : '';
+      final parsedWeight = weightText.isEmpty ? 1.0 : double.tryParse(weightText);
+      final parsedCount = countText.isEmpty ? 1 : int.tryParse(countText);
+      final isWeightValid = parsedWeight != null && parsedWeight > 0;
+      final isCountValid = parsedCount != null && parsedCount > 0;
+
+      _parsedData.add(
+        ParsedPrizeData(
+          name: name,
+          weightText: weightText,
+          countText: countText,
+          isValid: name.isNotEmpty && isWeightValid && isCountValid,
+          parsedWeight: parsedWeight,
+          parsedCount: parsedCount,
+        ),
+      );
+    }
+
+    setState(() {
+      _showPreview = true;
+    });
+  }
+
+  Future<void> _importPrizes() async {
+    if (_parsedData.isEmpty) return;
+
+    final validData = _parsedData.where((d) => d.isValid).toList();
+    final invalidCount = _parsedData.length - validData.length;
+    if (validData.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('没有有效的奖品数据可导入')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isImporting = true;
+      _importProgress = 0.0;
+      _importedCount = 0;
+      _totalCount = validData.length;
+    });
+
+    final importedPrizes = <Prize>[];
+    var successCount = 0;
+    var failCount = invalidCount;
+    const chunkSize = 200;
+
+    for (int i = 0; i < validData.length; i++) {
+      final item = validData[i];
+      try {
+        importedPrizes.add(
+          Prize(
+            id: '${DateTime.now().microsecondsSinceEpoch}_$i',
+            name: item.name,
+            weight: item.parsedWeight!,
+            count: item.parsedCount!,
+          ),
+        );
+        successCount++;
+      } catch (_) {
+        failCount++;
+      }
+
+      if ((i + 1) % chunkSize == 0 || i == validData.length - 1) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _importedCount = i + 1;
+        _totalCount = validData.length;
+        _importProgress = (i + 1) / validData.length;
+      });
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _isImporting = false;
+    });
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('导入完成'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.green),
+                const SizedBox(width: 8),
+                Text('成功导入: $successCount 个奖品'),
+              ],
+            ),
+            if (failCount > 0) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.error, color: Colors.red),
+                  const SizedBox(width: 8),
+                  Text('导入失败: $failCount 条记录'),
+                ],
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              Navigator.of(context).pop(importedPrizes);
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('快速导入奖品'),
+        actions: [
+          if (_showPreview && !_isImporting)
+            TextButton.icon(
+              onPressed: _importPrizes,
+              icon: const Icon(Icons.upload, color: Colors.white),
+              label: const Text('确认导入', style: TextStyle(color: Colors.white)),
+            ),
+        ],
+      ),
+      body: _isImporting
+          ? _buildImportingView()
+          : _showPreview
+          ? _buildPreviewView()
+          : _buildInputView(),
+      bottomNavigationBar: !_showPreview || _isImporting
+          ? null
+          : Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        setState(() {
+                          _showPreview = false;
+                        });
+                      },
+                      child: const Text('返回修改'),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _importPrizes,
+                      child: const Text('确认导入'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildInputView() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 20,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          '导入说明',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '• 每行输入一个奖品的信息\n'
+                    '• 奖品名称为必填项，权重和数量可留空\n'
+                    '• 权重默认值为 1，需为大于 0 的数字\n'
+                    '• 数量默认值为 1，需为大于 0 的整数\n'
+                    '• 三个输入框的行数需一一对应\n'
+                    '• 建议从 WPS Office 或 Excel 直接复制完整表格列',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildInputSection(
+            '奖品名称（必填）',
+            _namesController,
+            '一等奖\n二等奖\n三等奖',
+            Icons.card_giftcard,
+            true,
+          ),
+          const SizedBox(height: 16),
+          _buildInputSection(
+            '权重（可选）',
+            _weightsController,
+            '10\n5\n1',
+            Icons.balance,
+            false,
+          ),
+          const SizedBox(height: 16),
+          _buildInputSection(
+            '数量（可选）',
+            _countsController,
+            '1\n2\n5',
+            Icons.format_list_numbered,
+            false,
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                if (_namesController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('请至少输入一个奖品名称')),
+                  );
+                  return;
+                }
+                _parseData();
+              },
+              icon: const Icon(Icons.preview),
+              label: const Text('预览数据'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInputSection(
+    String label,
+    TextEditingController controller,
+    String hint,
+    IconData icon,
+    bool isRequired,
+  ) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 8),
+                Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+                if (isRequired)
+                  Text(
+                    ' *',
+                    style: TextStyle(color: Colors.red[700]),
+                  ),
+                const Spacer(),
+                Text(
+                  '${_parseLines(controller.text).length} 行',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              maxLines: 8,
+              decoration: InputDecoration(
+                hintText: hint,
+                border: const OutlineInputBorder(),
+                contentPadding: const EdgeInsets.all(12),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPreviewView() {
+    final validCount = _parsedData.where((d) => d.isValid).length;
+    final invalidCount = _parsedData.length - validCount;
+
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          color: Theme.of(context).colorScheme.primaryContainer,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildStatItem('总行数', _parsedData.length, Icons.list),
+              _buildStatItem('有效数据', validCount, Icons.check_circle, Colors.green),
+              if (invalidCount > 0)
+                _buildStatItem('无效数据', invalidCount, Icons.error, Colors.red),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: _parsedData.length,
+            itemBuilder: (context, index) {
+              final data = _parsedData[index];
+              final displayWeight = data.parsedWeight?.toString() ?? data.weightText;
+              final displayCount = data.parsedCount?.toString() ?? data.countText;
+              return Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: data.isValid
+                        ? Theme.of(context).colorScheme.primary
+                        : Colors.grey,
+                    child: Text(
+                      '${index + 1}',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  title: Text(
+                    data.name.isEmpty ? '(空奖品名称)' : data.name,
+                    style: TextStyle(
+                      color: data.isValid ? null : Colors.grey,
+                      decoration: data.isValid ? null : TextDecoration.lineThrough,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '权重: ${displayWeight.isEmpty ? "1" : displayWeight} | 数量: ${displayCount.isEmpty ? "1" : displayCount}',
+                  ),
+                  trailing: Icon(
+                    data.isValid ? Icons.check_circle : Icons.cancel,
+                    color: data.isValid ? Colors.green : Colors.red,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatItem(String label, int count, IconData icon, [Color? color]) {
+    return Column(
+      children: [
+        Icon(icon, color: color ?? Theme.of(context).colorScheme.primary),
+        const SizedBox(height: 4),
+        Text(
+          '$count',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildImportingView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 24),
+          Text(
+            '正在导入奖品数据...',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48),
+            child: Column(
+              children: [
+                LinearProgressIndicator(value: _importProgress),
+                const SizedBox(height: 8),
+                Text(
+                  '$_importedCount / $_totalCount',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
