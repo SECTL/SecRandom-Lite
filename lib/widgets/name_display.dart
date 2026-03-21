@@ -71,18 +71,21 @@ class _NameDisplayState extends State<NameDisplay> {
         padding: const EdgeInsets.all(32.0),
         child: Center(
           child: _displayedStudents.isEmpty
-              ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.touch_app, size: 64, color: Theme.of(context).disabledColor),
-                    const SizedBox(height: 16),
-                    Text(
-                      '准备点名',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        color: Theme.of(context).disabledColor,
+              ? SingleChildScrollView(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.touch_app, size: 64, color: Theme.of(context).disabledColor),
+                      const SizedBox(height: 16),
+                      Text(
+                        '准备点名',
+                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          color: Theme.of(context).disabledColor,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 )
               : SingleChildScrollView(
                   child: Wrap(
@@ -127,18 +130,21 @@ class _NameDisplayState extends State<NameDisplay> {
     } else {
       return Center(
         child: _displayedStudents.isEmpty
-            ? Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.touch_app, size: 64, color: Theme.of(context).disabledColor),
-                  const SizedBox(height: 16),
-                  Text(
-                    '准备点名',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      color: Theme.of(context).disabledColor,
+            ? SingleChildScrollView(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.touch_app, size: 64, color: Theme.of(context).disabledColor),
+                    const SizedBox(height: 16),
+                    Text(
+                      '准备点名',
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        color: Theme.of(context).disabledColor,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               )
             : SingleChildScrollView(
                 child: Center(

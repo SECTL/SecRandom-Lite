@@ -360,13 +360,12 @@ class ControlPanel extends StatelessWidget {
         ),
         SizedBox(height: fillHeight ? 0 : 12),
 
-        // 小组和性别选择在同一行
         Row(
           children: [
-            // 小组选择
             Expanded(
               child: DropdownButtonFormField<String>(
                 value: appProvider.selectedGroup,
+                isExpanded: true,
                 decoration: InputDecoration(
                   labelText: '小组',
                   border: OutlineInputBorder(
@@ -382,6 +381,7 @@ class ControlPanel extends StatelessWidget {
                     child: Text(
                       (item.child as Text).data!,
                       style: const TextStyle(fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   );
                 }).toList(),
@@ -390,10 +390,10 @@ class ControlPanel extends StatelessWidget {
             ),
             const SizedBox(width: 8),
 
-            // 性别选择
             Expanded(
               child: DropdownButtonFormField<String>(
                 value: appProvider.selectedGender,
+                isExpanded: true,
                 decoration: InputDecoration(
                   labelText: '性别',
                   border: OutlineInputBorder(
@@ -409,6 +409,7 @@ class ControlPanel extends StatelessWidget {
                     child: Text(
                       (item.child as Text).data!,
                       style: const TextStyle(fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   );
                 }).toList(),
@@ -419,10 +420,10 @@ class ControlPanel extends StatelessWidget {
         ),
 
         // 状态文本
-        SizedBox(height: fillHeight ? 0 : 12),
-        const Divider(),
+        SizedBox(height: fillHeight ? 0 : 8),
+        const Divider(height: 1),
         Padding(
-          padding: const EdgeInsets.only(top: 8.0),
+          padding: const EdgeInsets.only(top: 6.0, bottom: 4.0),
           child: Text(
             '剩余: ${appProvider.remainingCount} | 总数: ${appProvider.totalCount}',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 11),
@@ -517,10 +518,10 @@ class ControlPanel extends StatelessWidget {
           // 小组和性别选择在同一行
           Row(
             children: [
-              // 小组选择
               Expanded(
                 child: DropdownButtonFormField<String>(
                   value: appProvider.selectedGroup,
+                  isExpanded: true,
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(4),
@@ -535,6 +536,7 @@ class ControlPanel extends StatelessWidget {
                       child: Text(
                         (item.child as Text).data!,
                         style: const TextStyle(fontSize: 10),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     );
                   }).toList(),
@@ -543,10 +545,10 @@ class ControlPanel extends StatelessWidget {
               ),
               const SizedBox(width: 6),
 
-              // 性别选择
               Expanded(
                 child: DropdownButtonFormField<String>(
                   value: appProvider.selectedGender,
+                  isExpanded: true,
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(4),
@@ -561,6 +563,7 @@ class ControlPanel extends StatelessWidget {
                       child: Text(
                         (item.child as Text).data!,
                         style: const TextStyle(fontSize: 10),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     );
                   }).toList(),
