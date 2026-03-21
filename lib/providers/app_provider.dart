@@ -58,7 +58,7 @@ class AppProvider with ChangeNotifier {
 
     final config = await _dataService.loadConfig();
     _themeMode = _parseThemeMode(config.themeMode);
-    _selectCount = config.selectCount;
+    _selectCount = 1;
     _fairDrawEnabled = config.fairDrawEnabled;
     _nonRepeatEnabled = config.nonRepeatEnabled;
     _rollcallResultFontSize = config.rollcallResultFontSize;
