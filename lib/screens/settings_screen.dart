@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../providers/app_provider.dart';
 import 'settings/draw_settings_screen.dart';
@@ -91,10 +92,17 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
           const Divider(),
-          const ListTile(
-            leading: Icon(Icons.info),
-            title: Text('关于'),
-            subtitle: Text('SecRandom-lutter v0.0.8'),
+          ListTile(
+            leading: const Icon(Icons.info),
+            title: const Text('关于'),
+            subtitle: const Text('SecRandom-lutter v0.0.9'),
+            trailing: const Icon(Icons.open_in_new),
+            onTap: () async {
+              final uri = Uri.parse('https://github.com/LeafS825/SecRandom-lutter');
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
           ),
         ],
       ),
