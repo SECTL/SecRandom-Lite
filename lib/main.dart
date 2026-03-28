@@ -6,9 +6,7 @@ import 'screens/home_screen.dart';
 void main() {
   runApp(
     MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AppProvider()),
-      ],
+      providers: [ChangeNotifierProvider(create: (_) => AppProvider())],
       child: const MainApp(),
     ),
   );
@@ -20,13 +18,13 @@ class MainApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appProvider = Provider.of<AppProvider>(context);
-    
+
     return MaterialApp(
       title: 'SecRandom-lutter',
       themeMode: appProvider.themeMode,
       theme: ThemeData(
         useMaterial3: true,
-        fontFamily: 'Microsoft YaHei', 
+        fontFamily: 'Microsoft YaHei',
         fontFamilyFallback: const ['PingFang SC', 'Heiti SC', 'sans-serif'],
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF66CCFF),

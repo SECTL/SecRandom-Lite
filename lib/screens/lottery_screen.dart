@@ -7,7 +7,7 @@ import '../models/prize_pool.dart';
 import '../models/lottery_record.dart';
 import '../providers/app_provider.dart';
 import '../services/lottery_service.dart';
-import '../utils/device_size_helper.dart';
+import '../utils/responsive_layout_decider.dart';
 import '../widgets/slide_panel.dart';
 
 class LotteryScreen extends StatefulWidget {
@@ -18,12 +18,12 @@ class LotteryScreen extends StatefulWidget {
 }
 
 class _LotteryScreenState extends State<LotteryScreen> {
-  static const double _kPhoneLandscapeAspectRatioMin = 1.55;
-  static const double _kPhoneLandscapeMinWidth = 560;
-  static const double _kPhoneMaxShortestSide = 500;
   static const double _kPanelWidth = 280;
   static const double _kPanelGap = 24;
   static const double _kNarrowPanelHeight = 300;
+  static const double _kSafeEpsilon = 0.75;
+  static const Duration _kResizeDebounce = Duration(milliseconds: 150);
+  static const Duration _kStateSwitchMinInterval = Duration(milliseconds: 150);
 
   final LotteryService _lotteryService = LotteryService();
   final Random _random = Random.secure();
@@ -38,6 +38,18 @@ class _LotteryScreenState extends State<LotteryScreen> {
   PrizePool? _selectedPool;
 
   int _drawCount = 1;
+  final GlobalKey _lotteryContentKey = GlobalKey();
+  final GlobalKey _lotteryLargePanelKey = GlobalKey();
+  final GlobalKey _lotteryPortraitPanelKey = GlobalKey();
+
+  ResponsiveScreenState _lotteryState = ResponsiveScreenState.large;
+  bool _lotteryMeasurePending = false;
+  DateTime? _lotteryLastMeasureAt;
+  DateTime? _lotteryLastStateSwitchAt;
+  double _lotteryLastWidth = -1;
+  double _lotteryLastHeight = -1;
+  double _lotteryLastLargePanelHeight = 320;
+  double _lotteryLastPortraitPanelHeight = _kNarrowPanelHeight;
 
   @override
   void dispose() {
@@ -247,163 +259,321 @@ class _LotteryScreenState extends State<LotteryScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final double aspectRatio =
-              constraints.maxWidth / constraints.maxHeight;
-          final double shortestSide = constraints.biggest.shortestSide;
-          final bool isLandscapePhone =
-              aspectRatio >= _kPhoneLandscapeAspectRatioMin &&
-              constraints.maxWidth >= _kPhoneLandscapeMinWidth &&
-              shortestSide <= _kPhoneMaxShortestSide;
-          final bool isWideScreen =
-              constraints.maxWidth > 800 || isLandscapePhone;
-          final bool isSmallDevice = DeviceSizeHelper.isSmallDevice(constraints);
-          final double panelAvailableHeight =
-              constraints.maxHeight - (_kPanelGap * 2);
+  void _scheduleLotteryStateMeasurement(Size contentSize) {
+    final now = DateTime.now();
+    final widthChanged = (contentSize.width - _lotteryLastWidth).abs() > 0.5;
+    final heightChanged = (contentSize.height - _lotteryLastHeight).abs() > 0.5;
+    if (!widthChanged && !heightChanged) {
+      return;
+    }
+    if (_lotteryMeasurePending) {
+      return;
+    }
+    if (_lotteryLastMeasureAt != null &&
+        now.difference(_lotteryLastMeasureAt!) < _kResizeDebounce) {
+      return;
+    }
 
-          if (isSmallDevice) {
-            return Stack(
-              children: [
-                Container(
-                  color: Theme.of(context).colorScheme.surfaceContainer,
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: LotteryResultDisplay(
-                      records: _displayedRecords,
-                      isWideScreen: false,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: 8,
-                  bottom: 8,
-                  child: FloatingActionButton.small(
-                    heroTag: 'lottery_panel_fab',
-                    onPressed: _openSlidePanel,
-                    backgroundColor: Theme.of(context).colorScheme.primary,
-                    foregroundColor: Colors.white,
-                    child: const Icon(Icons.tune, size: 20),
-                  ),
-                ),
-              ],
-            );
-          }
+    _lotteryLastMeasureAt = now;
+    _lotteryLastWidth = contentSize.width;
+    _lotteryLastHeight = contentSize.height;
+    _lotteryMeasurePending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _lotteryMeasurePending = false;
+      if (!mounted) {
+        return;
+      }
+      final contentTop = _readTop(_lotteryContentKey);
+      if (contentTop == null) {
+        return;
+      }
+      final largePanelHeight =
+          _readHeight(_lotteryLargePanelKey) ?? _lotteryLastLargePanelHeight;
+      final portraitPanelHeight =
+          _readHeight(_lotteryPortraitPanelKey) ??
+          _lotteryLastPortraitPanelHeight;
+      _lotteryLastLargePanelHeight = largePanelHeight;
+      _lotteryLastPortraitPanelHeight = portraitPanelHeight;
 
-          return isWideScreen
-              ? Container(
-                  color: Theme.of(context).colorScheme.surfaceContainer,
-                  child: Stack(
-                    children: [
-                      Positioned(
-                        left: 0,
-                        right: _kPanelWidth + _kPanelGap,
-                        top: 0,
-                        bottom: 0,
-                        child: Padding(
-                          padding: const EdgeInsets.all(24.0),
-                          child: LotteryResultDisplay(
-                            records: _displayedRecords,
-                            isWideScreen: true,
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        right: _kPanelGap,
-                        bottom: _kPanelGap,
-                        child: SizedBox(
-                          width: _kPanelWidth,
-                          child: LotteryControlPanel(
-                            layoutMode: LotteryControlPanelLayoutMode.autoFit,
-                            availableHeight: panelAvailableHeight,
-                            prizePools: _prizePools,
-                            selectedPool: _selectedPool,
-                            drawCount: _drawCount,
-                            totalPrizeCount: _totalPrizeCount,
-                            remainingPrizeCount: _remainingPrizeCount,
-                            isDrawing: _isDrawing,
-                            onPoolChanged: (pool) async {
-                              setState(() {
-                                _selectedPool = pool;
-                                _displayedRecords = [];
-                              });
-                              await _loadPrizes();
-                            },
-                            onDrawCountChanged: (count) {
-                              setState(() {
-                                _drawCount = count;
-                              });
-                            },
-                            onStartDraw: _startDraw,
-                            onResetDraw: _resetDraw,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-              : Container(
-                  color: Theme.of(context).colorScheme.surfaceContainer,
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: LotteryResultDisplay(
-                            records: _displayedRecords,
-                            isWideScreen: false,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).cardColor,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 4,
-                              offset: const Offset(0, -2),
-                            ),
-                          ],
-                        ),
-                        constraints: BoxConstraints(
-                          maxHeight: _kNarrowPanelHeight,
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: LotteryControlPanel(
-                            prizePools: _prizePools,
-                            selectedPool: _selectedPool,
-                            drawCount: _drawCount,
-                            totalPrizeCount: _totalPrizeCount,
-                            remainingPrizeCount: _remainingPrizeCount,
-                            isDrawing: _isDrawing,
-                            onPoolChanged: (pool) async {
-                              setState(() {
-                                _selectedPool = pool;
-                                _displayedRecords = [];
-                              });
-                              await _loadPrizes();
-                            },
-                            onDrawCountChanged: (count) {
-                              setState(() {
-                                _drawCount = count;
-                              });
-                            },
-                            onStartDraw: _startDraw,
-                            onResetDraw: _resetDraw,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-        },
+      final largeResultWidth = contentSize.width - (_kPanelWidth + _kPanelGap);
+      final largePanelTop =
+          contentTop + contentSize.height - _kPanelGap - largePanelHeight;
+      final portraitResultHeight = contentSize.height - portraitPanelHeight;
+      final shortResultWidth = contentSize.width - (_kPanelWidth + _kPanelGap);
+
+      final nextState = decideResponsiveScreenState(
+        ResponsiveLayoutDecisionInput(
+          contentWidth: contentSize.width,
+          contentHeight: contentSize.height,
+          largeResultWidth: largeResultWidth,
+          largePanelTop: largePanelTop,
+          contentTop: contentTop,
+          portraitResultHeight: portraitResultHeight,
+          shortResultWidth: shortResultWidth,
+        ),
+        epsilon: _kSafeEpsilon,
+      );
+
+      if (nextState != _lotteryState) {
+        final switchNow = DateTime.now();
+        if (_lotteryLastStateSwitchAt != null &&
+            switchNow.difference(_lotteryLastStateSwitchAt!) <
+                _kStateSwitchMinInterval) {
+          return;
+        }
+        _lotteryLastStateSwitchAt = switchNow;
+        setState(() {
+          _lotteryState = nextState;
+        });
+      }
+    });
+  }
+
+  double? _readHeight(GlobalKey key) {
+    final renderObject = key.currentContext?.findRenderObject();
+    if (renderObject is RenderBox) {
+      return renderObject.size.height;
+    }
+    return null;
+  }
+
+  double? _readTop(GlobalKey key) {
+    final renderObject = key.currentContext?.findRenderObject();
+    if (renderObject is RenderBox) {
+      return renderObject.localToGlobal(Offset.zero).dy;
+    }
+    return null;
+  }
+
+  Widget _buildLotteryDrawerLayout() {
+    return Stack(
+      key: const ValueKey('lottery_layout_small'),
+      children: [
+        Positioned.fill(
+          child: Container(
+            color: Theme.of(context).colorScheme.surfaceContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: LotteryResultDisplay(
+                records: _displayedRecords,
+                isWideScreen: false,
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          right: 8,
+          bottom: 8,
+          child: FloatingActionButton.small(
+            heroTag: 'lottery_panel_fab',
+            onPressed: _openSlidePanel,
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            foregroundColor: Colors.white,
+            child: const Icon(Icons.tune, size: 20),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLotteryLargeLayout(double contentHeight) {
+    const rightPanelReservedWidth = _kPanelWidth + _kPanelGap;
+    final panelAvailableHeight = contentHeight - (_kPanelGap * 2);
+
+    return Stack(
+      key: const ValueKey('lottery_layout_large'),
+      children: [
+        Positioned(
+          left: 0,
+          right: rightPanelReservedWidth,
+          top: 0,
+          bottom: 0,
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: LotteryResultDisplay(
+              records: _displayedRecords,
+              isWideScreen: true,
+            ),
+          ),
+        ),
+        Positioned(
+          right: _kPanelGap,
+          bottom: _kPanelGap,
+          child: SizedBox(
+            key: _lotteryLargePanelKey,
+            width: _kPanelWidth,
+            child: LotteryControlPanel(
+              layoutMode: LotteryControlPanelLayoutMode.normal,
+              availableHeight: panelAvailableHeight,
+              prizePools: _prizePools,
+              selectedPool: _selectedPool,
+              drawCount: _drawCount,
+              totalPrizeCount: _totalPrizeCount,
+              remainingPrizeCount: _remainingPrizeCount,
+              isDrawing: _isDrawing,
+              onPoolChanged: (pool) async {
+                setState(() {
+                  _selectedPool = pool;
+                  _displayedRecords = [];
+                });
+                await _loadPrizes();
+              },
+              onDrawCountChanged: (count) {
+                setState(() {
+                  _drawCount = count;
+                });
+              },
+              onStartDraw: _startDraw,
+              onResetDraw: _resetDraw,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLotteryPortraitLayout() {
+    return Column(
+      key: const ValueKey('lottery_layout_portrait'),
+      children: [
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: LotteryResultDisplay(
+              records: _displayedRecords,
+              isWideScreen: false,
+            ),
+          ),
+        ),
+        Container(
+          key: _lotteryPortraitPanelKey,
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 4,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          constraints: const BoxConstraints(maxHeight: _kNarrowPanelHeight),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: LotteryControlPanel(
+              prizePools: _prizePools,
+              selectedPool: _selectedPool,
+              drawCount: _drawCount,
+              totalPrizeCount: _totalPrizeCount,
+              remainingPrizeCount: _remainingPrizeCount,
+              isDrawing: _isDrawing,
+              onPoolChanged: (pool) async {
+                setState(() {
+                  _selectedPool = pool;
+                  _displayedRecords = [];
+                });
+                await _loadPrizes();
+              },
+              onDrawCountChanged: (count) {
+                setState(() {
+                  _drawCount = count;
+                });
+              },
+              onStartDraw: _startDraw,
+              onResetDraw: _resetDraw,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLotteryShortLayout(double contentHeight) {
+    final panelAvailableHeight = contentHeight;
+
+    return Padding(
+      key: const ValueKey('lottery_layout_short'),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: LotteryResultDisplay(
+                records: _displayedRecords,
+                isWideScreen: true,
+              ),
+            ),
+          ),
+          const SizedBox(width: _kPanelGap),
+          SizedBox(
+            width: _kPanelWidth,
+            child: LotteryControlPanel(
+              layoutMode: LotteryControlPanelLayoutMode.compact,
+              availableHeight: panelAvailableHeight,
+              fillHeight: true,
+              prizePools: _prizePools,
+              selectedPool: _selectedPool,
+              drawCount: _drawCount,
+              totalPrizeCount: _totalPrizeCount,
+              remainingPrizeCount: _remainingPrizeCount,
+              isDrawing: _isDrawing,
+              onPoolChanged: (pool) async {
+                setState(() {
+                  _selectedPool = pool;
+                  _displayedRecords = [];
+                });
+                await _loadPrizes();
+              },
+              onDrawCountChanged: (count) {
+                setState(() {
+                  _drawCount = count;
+                });
+              },
+              onStartDraw: _startDraw,
+              onResetDraw: _resetDraw,
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  Widget _buildLotteryContent() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final contentSize = Size(constraints.maxWidth, constraints.maxHeight);
+        _scheduleLotteryStateMeasurement(contentSize);
+
+        Widget child;
+        switch (_lotteryState) {
+          case ResponsiveScreenState.large:
+            child = _buildLotteryLargeLayout(contentSize.height);
+            break;
+          case ResponsiveScreenState.portrait:
+            child = _buildLotteryPortraitLayout();
+            break;
+          case ResponsiveScreenState.short:
+            child = _buildLotteryShortLayout(contentSize.height);
+            break;
+          case ResponsiveScreenState.small:
+            child = _buildLotteryDrawerLayout();
+            break;
+        }
+
+        return Container(
+          key: _lotteryContentKey,
+          color: Theme.of(context).colorScheme.surfaceContainer,
+          child: Stack(children: [Positioned.fill(child: child)]),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(body: _buildLotteryContent());
   }
 }
 
@@ -420,7 +590,9 @@ class LotteryResultDisplay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final resultFontSize = context.watch<AppProvider>().lotteryResultFontSize;
-    final currentFontSize = isWideScreen ? resultFontSize : resultFontSize * 0.75;
+    final currentFontSize = isWideScreen
+        ? resultFontSize
+        : resultFontSize * 0.75;
 
     return Center(
       child: records == null || records!.isEmpty
@@ -721,7 +893,10 @@ class LotteryControlPanel extends StatelessWidget {
             ),
           ),
           items: prizePools.map((pool) {
-            return DropdownMenuItem(value: pool, child: Text(pool.name, overflow: TextOverflow.ellipsis));
+            return DropdownMenuItem(
+              value: pool,
+              child: Text(pool.name, overflow: TextOverflow.ellipsis),
+            );
           }).toList(),
           onChanged: onPoolChanged,
         ),
@@ -768,7 +943,10 @@ class LotteryControlPanel extends StatelessWidget {
                 border: Border.all(color: Theme.of(context).dividerColor),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Text('$drawCount', style: Theme.of(context).textTheme.titleLarge),
+              child: Text(
+                '$drawCount',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
             ),
             IconButton.filledTonal(
               onPressed: drawCount < maxCount
@@ -829,7 +1007,10 @@ class LotteryControlPanel extends StatelessWidget {
             isDense: true,
           ),
           items: prizePools.map((pool) {
-            return DropdownMenuItem(value: pool, child: Text(pool.name, overflow: TextOverflow.ellipsis));
+            return DropdownMenuItem(
+              value: pool,
+              child: Text(pool.name, overflow: TextOverflow.ellipsis),
+            );
           }).toList(),
           onChanged: onPoolChanged,
         ),
@@ -839,7 +1020,9 @@ class LotteryControlPanel extends StatelessWidget {
           padding: const EdgeInsets.only(top: 6.0, bottom: 4.0),
           child: Text(
             '剩余: $remainingPrizeCount | 总数: $totalPrizeCount',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 11),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Colors.grey, fontSize: 11),
             textAlign: TextAlign.center,
           ),
         ),
@@ -943,7 +1126,14 @@ class LotteryControlPanel extends StatelessWidget {
               labelStyle: const TextStyle(fontSize: 11),
             ),
             items: prizePools.map((pool) {
-              return DropdownMenuItem(value: pool, child: Text(pool.name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)));
+              return DropdownMenuItem(
+                value: pool,
+                child: Text(
+                  pool.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11),
+                ),
+              );
             }).toList(),
             onChanged: onPoolChanged,
           ),
