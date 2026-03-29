@@ -1,7 +1,7 @@
 name: SecRandom_lutter
 description: "基于 Material Design 3 的随机点名应用。"
 publish_to: 'none'
-version: 0.0.9+9
+version: 0.0.10+10
 
 environment:
   sdk: ^3.11.0

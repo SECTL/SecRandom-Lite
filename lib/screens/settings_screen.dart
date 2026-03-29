@@ -95,10 +95,12 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info),
             title: const Text('关于'),
-            subtitle: const Text('SecRandom-lutter v0.0.9'),
+            subtitle: const Text('SecRandom-lutter v0.0.10'),
             trailing: const Icon(Icons.open_in_new),
             onTap: () async {
-              final uri = Uri.parse('https://github.com/LeafS825/SecRandom-lutter');
+              final uri = Uri.parse(
+                'https://github.com/LeafS825/SecRandom-lutter',
+              );
               if (await canLaunchUrl(uri)) {
                 await launchUrl(uri, mode: LaunchMode.externalApplication);
               }
