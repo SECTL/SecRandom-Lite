@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/prize_pool.dart';
 import '../../models/prize.dart';
 import '../../services/lottery_service.dart';
+import '../../widgets/responsive_grid.dart';
 
 enum _EntryAction { edit, delete }
 
@@ -264,11 +265,8 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
                 ],
               ),
             )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _prizePools.length,
-              itemBuilder: (context, index) {
-                final pool = _prizePools[index];
+          : ResponsiveGrid(
+              children: _prizePools.map((pool) {
                 final prizes = _poolPrizes[pool.name] ?? [];
                 final prizeCount = prizes.where((p) => p.exist).length;
                 final totalCount = _lotteryService.getPrizeTotalCount(
@@ -277,7 +275,6 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
                 );
 
                 return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
                   child: GestureDetector(
                     onLongPressStart: _isMobilePlatform
                         ? (details) async {
@@ -322,7 +319,7 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
                     ),
                   ),
                 );
-              },
+              }).toList(),
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addPrizePool,
@@ -606,13 +603,9 @@ class _PrizePoolSettingsScreenState extends State<PrizePoolSettingsScreen> {
                 ],
               ),
             )
-          : ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: _prizes.length,
-              itemBuilder: (context, index) {
-                final prize = _prizes[index];
+          : ResponsiveGrid(
+              children: _prizes.map((prize) {
                 return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
                   child: ListTile(
                     title: Text(
                       prize.name,
@@ -632,7 +625,10 @@ class _PrizePoolSettingsScreenState extends State<PrizePoolSettingsScreen> {
                           onChanged: (value) {
                             if (value != null && mounted) {
                               setState(() {
-                                _prizes[index] = prize.copyWith(exist: value);
+                                final index = _prizes.indexWhere((p) => p.id == prize.id);
+                                if (index >= 0) {
+                                  _prizes[index] = prize.copyWith(exist: value);
+                                }
                               });
                               _savePool();
                             }
@@ -669,7 +665,7 @@ class _PrizePoolSettingsScreenState extends State<PrizePoolSettingsScreen> {
                     ),
                   ),
                 );
-              },
+              }).toList(),
             ),
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,

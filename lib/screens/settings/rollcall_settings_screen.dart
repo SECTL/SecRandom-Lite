@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../../models/student.dart';
 import '../../providers/app_provider.dart';
+import '../../widgets/responsive_grid.dart';
 import 'student_import_screen.dart';
 
 enum _EntryAction { edit, delete }
@@ -264,17 +265,13 @@ class _RollCallSettingsScreenState extends State<RollCallSettingsScreen> {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: classNames.length,
-            itemBuilder: (context, index) {
-              final className = classNames[index];
+          return ResponsiveGrid(
+            children: classNames.map((className) {
               final classStudents = students.where((s) => s.className == className).toList();
               final existingCount = classStudents.where((s) => s.exist).length;
               final totalCount = classStudents.length;
 
               return Card(
-                margin: const EdgeInsets.only(bottom: 12),
                 child: GestureDetector(
                   onLongPressStart: _isMobilePlatform
                       ? (details) async {
@@ -321,7 +318,7 @@ class _RollCallSettingsScreenState extends State<RollCallSettingsScreen> {
                   ),
                 ),
               );
-            },
+            }).toList(),
           );
         },
       ),
@@ -585,13 +582,9 @@ class _ClassStudentSettingsScreenState extends State<ClassStudentSettingsScreen>
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: students.length,
-            itemBuilder: (context, index) {
-              final student = students[index];
+          return ResponsiveGrid(
+            children: students.map((student) {
               return Card(
-                margin: const EdgeInsets.only(bottom: 12),
                 child: ListTile(
                   title: Text(
                     student.name,
@@ -649,7 +642,7 @@ class _ClassStudentSettingsScreenState extends State<ClassStudentSettingsScreen>
                   ),
                 ),
               );
-            },
+            }).toList(),
           );
         },
       ),
