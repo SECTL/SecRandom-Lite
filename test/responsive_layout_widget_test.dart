@@ -1,6 +1,6 @@
-import 'package:SecRandom_lutter/providers/app_provider.dart';
-import 'package:SecRandom_lutter/screens/home_screen.dart';
-import 'package:SecRandom_lutter/screens/lottery_screen.dart';
+import 'package:secrandom_lite/providers/app_provider.dart';
+import 'package:secrandom_lite/screens/home_screen.dart';
+import 'package:secrandom_lite/screens/lottery_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';

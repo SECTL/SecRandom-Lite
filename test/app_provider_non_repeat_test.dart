@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:SecRandom_lutter/providers/app_provider.dart';
+import 'package:secrandom_lite/providers/app_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';

@@ -20,7 +20,7 @@ class MainApp extends StatelessWidget {
     final appProvider = Provider.of<AppProvider>(context);
 
     return MaterialApp(
-      title: 'SecRandom-lutter',
+      title: 'Secrandom Lite',
       themeMode: appProvider.themeMode,
       theme: ThemeData(
         useMaterial3: true,

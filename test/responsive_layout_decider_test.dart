@@ -1,4 +1,4 @@
-import 'package:SecRandom_lutter/utils/responsive_layout_decider.dart';
+import 'package:secrandom_lite/utils/responsive_layout_decider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

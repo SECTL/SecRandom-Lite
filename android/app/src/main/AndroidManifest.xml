@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
-        android:label="SecRandom_lutter"
+        android:label="Secrandom Lite"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

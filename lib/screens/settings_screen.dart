@@ -95,7 +95,7 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info),
             title: const Text('关于'),
-            subtitle: const Text('SecRandom-lutter v0.0.10'),
+            subtitle: const Text('Secrandom Lite v0.0.10'),
             trailing: const Icon(Icons.open_in_new),
             onTap: () async {
               final uri = Uri.parse(

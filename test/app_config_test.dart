@@ -1,4 +1,4 @@
-import 'package:SecRandom_lutter/models/app_config.dart';
+import 'package:secrandom_lite/models/app_config.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -1,9 +1,9 @@
 import 'dart:math';
 
-import 'package:SecRandom_lutter/models/history_record.dart';
-import 'package:SecRandom_lutter/models/student.dart';
-import 'package:SecRandom_lutter/services/fair_draw_service.dart';
-import 'package:SecRandom_lutter/services/fair_weight_service.dart';
+import 'package:secrandom_lite/models/history_record.dart';
+import 'package:secrandom_lite/models/student.dart';
+import 'package:secrandom_lite/services/fair_draw_service.dart';
+import 'package:secrandom_lite/services/fair_weight_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

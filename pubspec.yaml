@@ -1,4 +1,4 @@
-name: SecRandom_lutter
+name: secrandom_lite
 description: "基于 Material Design 3 的随机点名应用。"
 publish_to: 'none'
 version: 0.0.10+10
