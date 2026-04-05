@@ -16,6 +16,7 @@ import 'loopback_server.dart';
 import 'platform_info.dart';
 import 'token_manager.dart';
 import 'web_auth_navigation.dart';
+import 'web_popup_auth.dart';
 
 class AuthApiException implements Exception {
   const AuthApiException({
@@ -51,6 +52,7 @@ class SectlAuthService {
   StreamSubscription<Uri>? _linkSubscription;
   AuthLoopbackServer? _loopbackServer;
   Completer<UserInfo>? _activeLoginCompleter;
+  WebAuthPopupSession? _webPopupSession;
 
   static String generateCodeVerifier({int byteLength = 32}) {
     final random = Random.secure();
@@ -139,8 +141,22 @@ class SectlAuthService {
     _activeLoginCompleter = Completer<UserInfo>();
 
     if (targetPlatform == PendingAuthTargetPlatform.web) {
-      await navigateBrowserTo(authUrl);
-      return _activeLoginCompleter!.future;
+      final popupSession = await openWebAuthPopup(authUrl);
+      if (popupSession == null) {
+        await navigateBrowserTo(authUrl);
+        return _activeLoginCompleter!.future;
+      }
+
+      _webPopupSession = popupSession;
+      unawaited(_waitForWebPopupCallback(popupSession));
+      return _activeLoginCompleter!.future.timeout(
+        const Duration(minutes: 5),
+        onTimeout: () async {
+          await _tokenManager.clearPendingAuthSession();
+          await _cleanupRuntime();
+          throw TimeoutException('SECTL login timed out.');
+        },
+      );
     }
 
     final launched = await launchUrl(
@@ -458,6 +474,30 @@ class SectlAuthService {
     }
   }
 
+  Future<void> _waitForWebPopupCallback(
+    WebAuthPopupSession popupSession,
+  ) async {
+    try {
+      final callbackUri = await popupSession.waitForCallback();
+      final userInfo = await completeLoginFromCallbackUri(callbackUri);
+      if (_activeLoginCompleter != null &&
+          !_activeLoginCompleter!.isCompleted) {
+        _activeLoginCompleter!.complete(userInfo);
+      }
+    } catch (error, stackTrace) {
+      if (_activeLoginCompleter != null &&
+          !_activeLoginCompleter!.isCompleted) {
+        _activeLoginCompleter!.completeError(error, stackTrace);
+      }
+    } finally {
+      await popupSession.close();
+      if (identical(_webPopupSession, popupSession)) {
+        _webPopupSession = null;
+      }
+      _activeLoginCompleter = null;
+    }
+  }
+
   PendingAuthTargetPlatform _resolveTargetPlatform() {
     if (kIsWeb) {
       return PendingAuthTargetPlatform.web;
@@ -542,6 +582,8 @@ class SectlAuthService {
     _linkSubscription = null;
     await _loopbackServer?.close();
     _loopbackServer = null;
+    await _webPopupSession?.close();
+    _webPopupSession = null;
     if (clearCompleter) {
       _activeLoginCompleter = null;
     }
@@ -550,9 +592,11 @@ class SectlAuthService {
   void dispose() {
     _linkSubscription?.cancel();
     _loopbackServer?.close();
+    _webPopupSession?.close();
     _httpClient.close();
     _linkSubscription = null;
     _loopbackServer = null;
+    _webPopupSession = null;
     _activeLoginCompleter = null;
   }
 }

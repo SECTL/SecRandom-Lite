@@ -16,7 +16,7 @@ class AuthConfig {
 
   static const String authCallbackBridgeUrl = String.fromEnvironment(
     'SECTL_AUTH_CALLBACK_BRIDGE_URL',
-    defaultValue: 'https://example.com/auth_callback.html',
+    defaultValue: 'https://secrandom-online.sectl.top/auth_callback',
   );
 
   static const String webAppUrl = String.fromEnvironment(
@@ -51,7 +51,8 @@ class AuthConfig {
 
   static String get oauthRedirectUri {
     if (useMockAuth &&
-        authCallbackBridgeUrl == 'https://example.com/auth_callback.html') {
+        authCallbackBridgeUrl ==
+            'https://secrandom-online.sectl.top/auth_callback') {
       return '$mockAuthBaseUrl/auth_callback.html';
     }
     return authCallbackBridgeUrl;
