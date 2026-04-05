@@ -137,10 +137,10 @@
 
       const target = new URL(targetUrl);
       window.opener.postMessage(
-        {
+        JSON.stringify({
           type: 'sectl-auth-callback',
           href: target.toString()
-        },
+        }),
         target.origin,
       );
       return true;
@@ -192,7 +192,7 @@
 
         setTimeout(() => {
           if (maybeNotifyOpener(payload, targetUrl)) {
-            window.close();
+            setTimeout(() => window.close(), 150);
             return;
           }
           window.location.assign(targetUrl);

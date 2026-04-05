@@ -53,6 +53,7 @@ class SectlAuthService {
   AuthLoopbackServer? _loopbackServer;
   Completer<UserInfo>? _activeLoginCompleter;
   WebAuthPopupSession? _webPopupSession;
+  bool _webRedirectFallbackTriggered = false;
 
   static String generateCodeVerifier({int byteLength = 32}) {
     final random = Random.secure();
@@ -141,6 +142,7 @@ class SectlAuthService {
 
     final authUrl = getAuthorizationUrl(session);
     _activeLoginCompleter = Completer<UserInfo>();
+    _webRedirectFallbackTriggered = false;
 
     if (targetPlatform == PendingAuthTargetPlatform.web) {
       final popupSession = await openWebAuthPopup(authUrl);
@@ -493,6 +495,10 @@ class SectlAuthService {
         _activeLoginCompleter!.complete(userInfo);
       }
     } catch (error, stackTrace) {
+      final redirected = await _fallbackWebPopupToFullRedirect(error);
+      if (redirected) {
+        return;
+      }
       if (_activeLoginCompleter != null &&
           !_activeLoginCompleter!.isCompleted) {
         _activeLoginCompleter!.completeError(error, stackTrace);
@@ -504,6 +510,29 @@ class SectlAuthService {
       }
       _activeLoginCompleter = null;
     }
+  }
+
+  Future<bool> _fallbackWebPopupToFullRedirect(Object error) async {
+    if (!kIsWeb || _webRedirectFallbackTriggered) {
+      return false;
+    }
+
+    if (error is! StateError ||
+        !error.message.contains('popup was closed before finishing')) {
+      return false;
+    }
+
+    final pendingSession = await _tokenManager.getPendingAuthSession();
+    if (pendingSession == null ||
+        pendingSession.targetPlatform != PendingAuthTargetPlatform.web ||
+        pendingSession.isExpired) {
+      return false;
+    }
+
+    _webRedirectFallbackTriggered = true;
+    final authUrl = getAuthorizationUrl(pendingSession);
+    await navigateBrowserTo(authUrl);
+    return true;
   }
 
   PendingAuthTargetPlatform _resolveTargetPlatform() {
@@ -592,6 +621,7 @@ class SectlAuthService {
     _loopbackServer = null;
     await _webPopupSession?.close();
     _webPopupSession = null;
+    _webRedirectFallbackTriggered = false;
     if (clearCompleter) {
       _activeLoginCompleter = null;
     }
@@ -605,6 +635,7 @@ class SectlAuthService {
     _linkSubscription = null;
     _loopbackServer = null;
     _webPopupSession = null;
+    _webRedirectFallbackTriggered = false;
     _activeLoginCompleter = null;
   }
 }
