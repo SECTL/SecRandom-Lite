@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SECTL Callback</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: linear-gradient(180deg, #eef7ff 0%, #ffffff 100%);
+      color: #10324a;
+    }
+
+    .page {
+      max-width: 640px;
+      margin: 64px auto;
+      padding: 32px 24px;
+    }
+
+    .card {
+      background: #ffffff;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(16, 50, 74, 0.12);
+      padding: 28px 24px;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: 28px;
+    }
+
+    p {
+      margin: 12px 0;
+      line-height: 1.6;
+    }
+
+    .muted {
+      color: #4d677a;
+    }
+
+    .actions {
+      margin-top: 20px;
+    }
+
+    a.button {
+      display: inline-block;
+      padding: 12px 18px;
+      border-radius: 12px;
+      background: #0f7cc0;
+      color: #ffffff;
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    code {
+      background: #f3f8fc;
+      border-radius: 8px;
+      padding: 2px 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="card">
+      <h1 id="title">Completing SECTL sign-in</h1>
+      <p id="message" class="muted">Please wait while we return you to SecRandom Lite.</p>
+      <div class="actions" id="actions" hidden>
+        <a id="manualLink" class="button" href="#">Open SecRandom Lite</a>
+      </div>
+      <p id="detail" class="muted"></p>
+    </div>
+  </div>
+
+  <script>
+    const titleEl = document.getElementById('title');
+    const messageEl = document.getElementById('message');
+    const detailEl = document.getElementById('detail');
+    const actionsEl = document.getElementById('actions');
+    const manualLinkEl = document.getElementById('manualLink');
+
+    function decodeStatePayload(state) {
+      const normalized = state.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+      const decoded = atob(padded);
+      return JSON.parse(decoded);
+    }
+
+    function assertHttpUrl(value) {
+      const parsed = new URL(value);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new Error('Only http(s) web redirects are allowed.');
+      }
+      if (parsed.username || parsed.password) {
+        throw new Error('Credential-bearing redirect URLs are not allowed.');
+      }
+      parsed.hash = '';
+      return parsed;
+    }
+
+    function buildForwardUrl(payload, callbackParams) {
+      if (!payload || typeof payload !== 'object') {
+        throw new Error('Invalid state payload.');
+      }
+
+      switch (payload.t) {
+        case 'web': {
+          if (typeof payload.w !== 'string' || payload.w.length === 0) {
+            throw new Error('Missing web redirect URL.');
+          }
+          const target = assertHttpUrl(payload.w);
+          target.search = callbackParams.toString();
+          return target.toString();
+        }
+        case 'android': {
+          return `secrandom://auth/callback?${callbackParams.toString()}`;
+        }
+        case 'desktop': {
+          const port = Number(payload.p);
+          if (!Number.isInteger(port) || port < 1 || port > 65535) {
+            throw new Error('Invalid desktop callback port.');
+          }
+          return `http://127.0.0.1:${port}/callback?${callbackParams.toString()}`;
+        }
+        default:
+          throw new Error('Unsupported callback target.');
+      }
+    }
+
+    function showManualAction(url, label) {
+      manualLinkEl.href = url;
+      manualLinkEl.textContent = label;
+      actionsEl.hidden = false;
+    }
+
+    function showError(message, detail) {
+      titleEl.textContent = 'SECTL callback failed';
+      messageEl.textContent = message;
+      detailEl.textContent = detail || '';
+    }
+
+    (function main() {
+      try {
+        const currentUrl = new URL(window.location.href);
+        const callbackParams = new URLSearchParams();
+        const code = currentUrl.searchParams.get('code');
+        const state = currentUrl.searchParams.get('state');
+        const error = currentUrl.searchParams.get('error');
+        const errorDescription = currentUrl.searchParams.get('error_description');
+
+        if (code) callbackParams.set('code', code);
+        if (state) callbackParams.set('state', state);
+        if (error) callbackParams.set('error', error);
+        if (errorDescription) callbackParams.set('error_description', errorDescription);
+
+        if (!state) {
+          throw new Error('Missing OAuth state.');
+        }
+
+        const payload = decodeStatePayload(state);
+        const targetUrl = buildForwardUrl(payload, callbackParams);
+
+        if (payload.t === 'android') {
+          showManualAction(targetUrl, 'Return to Android app');
+          detailEl.textContent = 'If the app does not open automatically, use the button above.';
+        } else if (payload.t === 'desktop') {
+          showManualAction(targetUrl, 'Open desktop app');
+          detailEl.textContent = 'If the desktop app does not receive the callback automatically, use the button above.';
+        } else {
+          detailEl.textContent = 'If you are not redirected automatically, open SecRandom Lite manually.';
+        }
+
+        setTimeout(() => {
+          window.location.assign(targetUrl);
+        }, 120);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        showError(
+          'We could not forward this SECTL callback to SecRandom Lite.',
+          message,
+        );
+      }
+    })();
+  </script>
+</body>
+</html>

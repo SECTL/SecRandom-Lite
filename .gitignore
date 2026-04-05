@@ -65,3 +65,6 @@ upload-keystore-base64.txt
 *.backup
 .wrangler
 .claude
+IMPLEMENTATION_REPORT.md
+SECTL_INTEGRATION.md
+TESTING_GUIDE.md
