@@ -1,12 +1,15 @@
 import '../../models/auth_token.dart';
 import '../../models/pending_auth_session.dart';
 import '../../models/user_info.dart';
+import 'package:uuid/uuid.dart';
 import 'auth_config.dart';
 import 'key_value_store.dart';
 
 class TokenManager {
   TokenManager({KeyValueStore? store})
     : _store = store ?? SecureKeyValueStore();
+
+  static const Uuid _uuid = Uuid();
 
   final KeyValueStore _store;
 
@@ -154,6 +157,18 @@ class TokenManager {
   Future<void> clearPendingAuthSession() async {
     _cachedPendingSession = null;
     await _store.delete(key: AuthConfig.pendingAuthSessionKey);
+  }
+
+  Future<String> getOrCreateDeviceUuid() async {
+    final existing = await _store.read(key: AuthConfig.deviceUuidKey);
+    if (existing != null && existing.isNotEmpty) {
+      return existing;
+    }
+
+    final generated =
+        '${AuthConfig.platformId}_${_uuid.v4().replaceAll('-', '')}';
+    await _store.write(key: AuthConfig.deviceUuidKey, value: generated);
+    return generated;
   }
 
   Future<void> clearAll() async {

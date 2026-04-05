@@ -32,7 +32,7 @@ void main() {
       );
       expect(
         url.queryParameters['redirect_uri'],
-        'https://example.com/auth_callback.html',
+        'https://secrandom-online.sectl.top/auth_callback',
       );
     });
 
@@ -59,6 +59,7 @@ void main() {
       expect(capturedBody?['grant_type'], 'authorization_code');
       expect(capturedBody?['code'], 'auth-code');
       expect(capturedBody?['code_verifier'], 'pkce-verifier');
+      expect(capturedBody?['device_uuid'], isNotNull);
       expect(capturedBody?.containsKey('client_secret'), isFalse);
     });
 

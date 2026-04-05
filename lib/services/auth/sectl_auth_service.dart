@@ -80,6 +80,7 @@ class SectlAuthService {
   static Map<String, dynamic> buildTokenExchangePayload({
     required String code,
     required String codeVerifier,
+    required String deviceUuid,
   }) {
     return {
       'grant_type': 'authorization_code',
@@ -87,6 +88,7 @@ class SectlAuthService {
       'client_id': AuthConfig.platformId,
       'redirect_uri': AuthConfig.oauthRedirectUri,
       'code_verifier': codeVerifier,
+      'device_uuid': deviceUuid,
     };
   }
 
@@ -274,9 +276,11 @@ class SectlAuthService {
     required String codeVerifier,
   }) async {
     final url = Uri.parse('${AuthConfig.baseUrl}${AuthConfig.tokenEndpoint}');
+    final deviceUuid = await _tokenManager.getOrCreateDeviceUuid();
     final payload = buildTokenExchangePayload(
       code: code,
       codeVerifier: codeVerifier,
+      deviceUuid: deviceUuid,
     );
 
     final response = await _httpClient.post(
@@ -294,7 +298,7 @@ class SectlAuthService {
   }
 
   Future<AuthToken> refreshToken(String refreshToken) async {
-    final url = Uri.parse('${AuthConfig.baseUrl}${AuthConfig.tokenEndpoint}');
+    final url = Uri.parse('${AuthConfig.baseUrl}${AuthConfig.refreshEndpoint}');
     final response = await _httpClient.post(
       url,
       headers: {'Content-Type': 'application/json'},
@@ -403,7 +407,11 @@ class SectlAuthService {
         );
         await _httpClient.post(
           url,
-          headers: {'Authorization': 'Bearer $accessToken'},
+          headers: {
+            'Authorization': 'Bearer $accessToken',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'client_id': AuthConfig.platformId}),
         );
       } on AuthApiException catch (error) {
         if (!error.isInvalidToken) {

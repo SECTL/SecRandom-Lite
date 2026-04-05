@@ -32,6 +32,7 @@ class AuthConfig {
 
   static const String authorizeEndpoint = '/oauth/authorize';
   static const String tokenEndpoint = '/api/oauth/token';
+  static const String refreshEndpoint = '/api/oauth/refresh';
   static const String userInfoEndpoint = '/api/oauth/userinfo';
   static const String logoutEndpoint = '/api/oauth/logout';
 
@@ -48,6 +49,7 @@ class AuthConfig {
   static const String tokenExpiresAtKey = 'sectl_token_expires_at';
   static const String userInfoKey = 'sectl_user_info';
   static const String pendingAuthSessionKey = 'sectl_pending_auth_session';
+  static const String deviceUuidKey = 'sectl_device_uuid';
 
   static String get oauthRedirectUri {
     if (useMockAuth &&

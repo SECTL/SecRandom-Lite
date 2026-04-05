@@ -28,6 +28,13 @@ class WebAuthPopupSession {
     });
 
     _closedTimer = Timer.periodic(const Duration(milliseconds: 300), (_) {
+      final callbackUri = _tryReadPopupCallbackUri();
+      if (callbackUri != null && !_callbackCompleter.isCompleted) {
+        _callbackCompleter.complete(callbackUri);
+        unawaited(close());
+        return;
+      }
+
       if (_popupWindow.closed == true && !_callbackCompleter.isCompleted) {
         _callbackCompleter.completeError(
           StateError('The SECTL login popup was closed before finishing.'),
@@ -43,6 +50,24 @@ class WebAuthPopupSession {
   Timer? _closedTimer;
 
   Future<Uri> waitForCallback() => _callbackCompleter.future;
+
+  Uri? _tryReadPopupCallbackUri() {
+    try {
+      final href = _popupWindow.location.href;
+      if (href == null || href.isEmpty) {
+        return null;
+      }
+
+      final uri = Uri.parse(href);
+      if (uri.queryParameters.containsKey('code') ||
+          uri.queryParameters.containsKey('error')) {
+        return uri;
+      }
+    } catch (_) {
+      // Ignore cross-origin access errors until the popup returns to our origin.
+    }
+    return null;
+  }
 
   Future<void> close() async {
     _closedTimer?.cancel();
