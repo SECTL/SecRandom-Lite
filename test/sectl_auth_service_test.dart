@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:secrandom_lite/models/pending_auth_session.dart';
+import 'package:secrandom_lite/services/auth/auth_web_security.dart';
 import 'package:secrandom_lite/services/auth/key_value_store.dart';
 import 'package:secrandom_lite/services/auth/sectl_auth_service.dart';
 import 'package:secrandom_lite/services/auth/token_manager.dart';
@@ -62,6 +63,69 @@ void main() {
       expect(capturedBody?['device_uuid'], isNotNull);
       expect(capturedBody?.containsKey('client_secret'), isFalse);
     });
+
+    test('trusted web callback URI only accepts configured app origin', () {
+      final trustedUri = parseTrustedWebAppCallbackUri(
+        'https://secrandom-online.sectl.top/?code=abc&state=state-123#ignored',
+      );
+      final untrustedUri = parseTrustedWebAppCallbackUri(
+        'https://evil.example/?code=abc&state=state-123',
+      );
+
+      expect(trustedUri, isNotNull);
+      expect(trustedUri?.origin, 'https://secrandom-online.sectl.top');
+      expect(trustedUri?.fragment, isEmpty);
+      expect(untrustedUri, isNull);
+    });
+
+    test(
+      'trusted web callback URI rejects credential-bearing redirect URLs',
+      () {
+        final uri = parseTrustedWebAppCallbackUri(
+          'https://user:pass@secrandom-online.sectl.top/?code=abc',
+        );
+
+        expect(uri, isNull);
+      },
+    );
+
+    test(
+      'trusted web popup callback message requires origin and popup source',
+      () {
+        expect(
+          isTrustedWebPopupCallbackMessage(
+            messageType: 'sectl-auth-callback',
+            href:
+                'https://secrandom-online.sectl.top/?code=abc&state=state-123',
+            eventOrigin: 'https://secrandom-online.sectl.top',
+            isFromExpectedPopupWindow: true,
+          ),
+          isTrue,
+        );
+
+        expect(
+          isTrustedWebPopupCallbackMessage(
+            messageType: 'sectl-auth-callback',
+            href:
+                'https://secrandom-online.sectl.top/?code=abc&state=state-123',
+            eventOrigin: 'https://evil.example',
+            isFromExpectedPopupWindow: true,
+          ),
+          isFalse,
+        );
+
+        expect(
+          isTrustedWebPopupCallbackMessage(
+            messageType: 'sectl-auth-callback',
+            href:
+                'https://secrandom-online.sectl.top/?code=abc&state=state-123',
+            eventOrigin: 'https://secrandom-online.sectl.top',
+            isFromExpectedPopupWindow: false,
+          ),
+          isFalse,
+        );
+      },
+    );
 
     test(
       'completeLoginFromCallbackUri clears pending session on auth error',

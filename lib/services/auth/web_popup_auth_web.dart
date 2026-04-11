@@ -4,6 +4,9 @@ import 'dart:js_interop';
 
 import 'package:universal_html/html.dart' as html;
 
+import 'auth_config.dart';
+import 'auth_web_security.dart';
+
 extension on JSObject {
   external JSAny? operator [](String key);
 }
@@ -12,23 +15,13 @@ class WebAuthPopupSession {
   WebAuthPopupSession._(this._popupWindow) {
     _messageSubscription = html.window.onMessage.listen((event) {
       final payload = _normalizeMessagePayload(event.data);
-      if (payload == null) {
-        return;
-      }
-
-      final type = payload['type'];
-      final href = payload['href'];
-
-      if (type != 'sectl-auth-callback' || href is! String) {
-        return;
-      }
-
-      if (href.isEmpty) {
+      final callbackUri = _extractTrustedCallbackUri(event, payload);
+      if (callbackUri == null) {
         return;
       }
 
       if (!_callbackCompleter.isCompleted) {
-        _callbackCompleter.complete(Uri.parse(href));
+        _callbackCompleter.complete(callbackUri);
       }
       unawaited(close());
     });
@@ -54,9 +47,7 @@ class WebAuthPopupSession {
           return decoded;
         }
         if (decoded is Map) {
-          return decoded.map(
-            (key, value) => MapEntry(key.toString(), value),
-          );
+          return decoded.map((key, value) => MapEntry(key.toString(), value));
         }
       } catch (_) {
         return null;
@@ -68,9 +59,7 @@ class WebAuthPopupSession {
     }
 
     if (data is Map) {
-      return data.map(
-        (key, value) => MapEntry(key.toString(), value),
-      );
+      return data.map((key, value) => MapEntry(key.toString(), value));
     }
 
     try {
@@ -86,6 +75,43 @@ class WebAuthPopupSession {
       };
     } catch (_) {
       return null;
+    }
+  }
+
+  Uri? _extractTrustedCallbackUri(
+    html.MessageEvent event,
+    Map<String, dynamic>? payload,
+  ) {
+    if (payload == null || !_isTrustedPopupMessage(event, payload)) {
+      return null;
+    }
+
+    final href = payload['href'] as String;
+    return parseTrustedWebAppCallbackUri(href);
+  }
+
+  bool _isTrustedPopupMessage(
+    html.MessageEvent event,
+    Map<String, dynamic> payload,
+  ) {
+    return isTrustedWebPopupCallbackMessage(
+      messageType: payload['type'],
+      href: payload['href'],
+      eventOrigin: event.origin,
+      isFromExpectedPopupWindow: _isExpectedPopupSource(event.source),
+      callbackBridgeUrl: AuthConfig.oauthRedirectUri,
+    );
+  }
+
+  bool _isExpectedPopupSource(dynamic source) {
+    if (source == null) {
+      return false;
+    }
+
+    try {
+      return identical(source, _popupWindow) || source == _popupWindow;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -185,8 +211,14 @@ Future<WebAuthPopupSession?> openWebAuthPopup(String url) async {
   ].join(',');
 
   final popup = html.window.open(url, 'sectl_auth_popup', features);
-  if (popup == null) {
-    return null;
+  try {
+    final popupJs = popup as JSObject;
+    final closed = popupJs['closed'];
+    if (closed is JSBoolean && closed.toDart) {
+      return null;
+    }
+  } catch (_) {
+    // Ignore browser interop failures and continue with popup session.
   }
   return WebAuthPopupSession._(popup);
 }

@@ -98,6 +98,28 @@
       return parsed;
     }
 
+    function getAllowedWebAppBaseUrl() {
+      return new URL('/', window.location.href);
+    }
+
+    function assertAllowedWebRedirectUrl(value) {
+      const target = assertHttpUrl(value);
+      const allowedBase = getAllowedWebAppBaseUrl();
+      const allowedPath = allowedBase.pathname.endsWith('/')
+        ? allowedBase.pathname
+        : `${allowedBase.pathname}/`;
+
+      if (target.origin !== allowedBase.origin) {
+        throw new Error('Web redirect origin is not allowed.');
+      }
+
+      if (!target.pathname.startsWith(allowedPath)) {
+        throw new Error('Web redirect path is not allowed.');
+      }
+
+      return target;
+    }
+
     function buildForwardUrl(payload, callbackParams) {
       if (!payload || typeof payload !== 'object') {
         throw new Error('Invalid state payload.');
@@ -108,7 +130,7 @@
           if (typeof payload.w !== 'string' || payload.w.length === 0) {
             throw new Error('Missing web redirect URL.');
           }
-          const target = assertHttpUrl(payload.w);
+          const target = assertAllowedWebRedirectUrl(payload.w);
           target.search = callbackParams.toString();
           return target.toString();
         }
