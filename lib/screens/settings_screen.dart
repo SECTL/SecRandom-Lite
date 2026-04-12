@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../providers/app_provider.dart';
 import '../providers/auth_provider.dart';
+import 'settings/about_settings_screen.dart';
 import 'settings/draw_settings_screen.dart';
 import 'settings/lottery_settings_screen.dart';
 import 'settings/personalization_settings_screen.dart';
@@ -102,14 +102,13 @@ class SettingsScreen extends StatelessWidget {
             leading: const Icon(Icons.info),
             title: const Text('关于'),
             subtitle: const Text('Secrandom Lite v0.0.10'),
-            trailing: const Icon(Icons.open_in_new),
-            onTap: () async {
-              final uri = Uri.parse(
-                'https://github.com/LeafS825/SecRandom-lutter',
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const AboutSettingsScreen(),
+                ),
               );
-              if (await canLaunchUrl(uri)) {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              }
             },
           ),
         ],
@@ -122,61 +121,56 @@ class SettingsScreen extends StatelessWidget {
     final isLoggedIn = authProvider.isLoggedIn;
     final userInfo = authProvider.userInfo;
 
-    return Card(
-      margin: const EdgeInsets.all(16),
-      child: InkWell(
-        onTap: () {
-          if (isLoggedIn) {
-            // 已登录：进入账户设置详情
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const AccountSettingsScreen(),
+    return InkWell(
+      onTap: () {
+        if (isLoggedIn) {
+          // 已登录：进入账户设置详情
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const AccountSettingsScreen(),
+            ),
+          );
+        } else {
+          // 未登录：触发登录流程
+          _showLoginDialog(context);
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            // 头像
+            CircleAvatar(
+              radius: 30,
+              backgroundImage: isLoggedIn && userInfo?.avatarUrl != null
+                  ? CachedNetworkImageProvider(userInfo!.avatarUrl!)
+                  : null,
+              child: isLoggedIn && userInfo?.avatarUrl == null
+                  ? Text(userInfo?.name[0] ?? 'U')
+                  : const Icon(Icons.person_outline),
+            ),
+            const SizedBox(width: 16),
+            // 用户信息
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isLoggedIn ? userInfo?.name ?? '用户' : '游客模式',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    isLoggedIn ? userInfo?.email ?? '' : '点击登录以同步数据',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
               ),
-            );
-          } else {
-            // 未登录：触发登录流程
-            _showLoginDialog(context);
-          }
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // 头像
-              CircleAvatar(
-                radius: 30,
-                backgroundImage: isLoggedIn && userInfo?.avatarUrl != null
-                    ? CachedNetworkImageProvider(userInfo!.avatarUrl!)
-                    : null,
-                child: isLoggedIn && userInfo?.avatarUrl == null
-                    ? Text(userInfo?.name[0] ?? 'U')
-                    : const Icon(Icons.person_outline),
-              ),
-              const SizedBox(width: 16),
-              // 用户信息
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isLoggedIn ? userInfo?.name ?? '用户' : '游客模式',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      isLoggedIn
-                          ? userInfo?.email ?? ''
-                          : '点击登录以同步数据',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-              ),
-              // 箭头图标
-              const Icon(Icons.chevron_right),
-            ],
-          ),
+            ),
+            // 箭头图标
+            const Icon(Icons.chevron_right),
+          ],
         ),
       ),
     );
@@ -217,12 +211,7 @@ class SettingsScreen extends StatelessWidget {
   Widget _buildFeatureItem(String text) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          const SizedBox(width: 16),
-          Text(text),
-        ],
-      ),
+      child: Row(children: [const SizedBox(width: 16), Text(text)]),
     );
   }
 
@@ -246,17 +235,13 @@ class SettingsScreen extends StatelessWidget {
       navigator.pop();
 
       // 显示成功提示
-      messenger.showSnackBar(
-        const SnackBar(content: Text('登录成功！')),
-      );
+      messenger.showSnackBar(const SnackBar(content: Text('登录成功！')));
     } catch (e) {
       // 关闭加载指示器
       navigator.pop();
 
       // 显示错误
-      messenger.showSnackBar(
-        SnackBar(content: Text('登录失败：$e')),
-      );
+      messenger.showSnackBar(SnackBar(content: Text('登录失败：$e')));
     }
   }
 }
