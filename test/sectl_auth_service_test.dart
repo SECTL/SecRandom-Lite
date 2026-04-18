@@ -45,7 +45,7 @@ void main() {
       );
       expect(
         url.queryParameters['redirect_uri'],
-        'https://secrandom-online.sectl.top/auth_callback_web.html',
+        'https://secrandom-lite.sectl.top/auth_callback_web.html',
       );
     });
 
@@ -216,14 +216,14 @@ void main() {
 
     test('trusted web callback URI only accepts configured app origin', () {
       final trustedUri = parseTrustedWebAppCallbackUri(
-        'https://secrandom-online.sectl.top/?code=abc&state=state-123#ignored',
+        'https://secrandom-lite.sectl.top/?code=abc&state=state-123#ignored',
       );
       final untrustedUri = parseTrustedWebAppCallbackUri(
         'https://evil.example/?code=abc&state=state-123',
       );
 
       expect(trustedUri, isNotNull);
-      expect(trustedUri?.origin, 'https://secrandom-online.sectl.top');
+      expect(trustedUri?.origin, 'https://secrandom-lite.sectl.top');
       expect(trustedUri?.fragment, isEmpty);
       expect(untrustedUri, isNull);
     });
@@ -232,7 +232,7 @@ void main() {
       'trusted web callback URI rejects credential-bearing redirect URLs',
       () {
         final uri = parseTrustedWebAppCallbackUri(
-          'https://user:pass@secrandom-online.sectl.top/?code=abc',
+          'https://user:pass@secrandom-lite.sectl.top/?code=abc',
         );
 
         expect(uri, isNull);
@@ -246,8 +246,8 @@ void main() {
           isTrustedWebPopupCallbackMessage(
             messageType: 'sectl-auth-callback',
             href:
-                'https://secrandom-online.sectl.top/?code=abc&state=state-123',
-            eventOrigin: 'https://secrandom-online.sectl.top',
+                'https://secrandom-lite.sectl.top/?code=abc&state=state-123',
+            eventOrigin: 'https://secrandom-lite.sectl.top',
             isFromExpectedPopupWindow: true,
           ),
           isTrue,
@@ -257,7 +257,7 @@ void main() {
           isTrustedWebPopupCallbackMessage(
             messageType: 'sectl-auth-callback',
             href:
-                'https://secrandom-online.sectl.top/?code=abc&state=state-123',
+                'https://secrandom-lite.sectl.top/?code=abc&state=state-123',
             eventOrigin: 'https://evil.example',
             isFromExpectedPopupWindow: true,
           ),
@@ -268,8 +268,8 @@ void main() {
           isTrustedWebPopupCallbackMessage(
             messageType: 'sectl-auth-callback',
             href:
-                'https://secrandom-online.sectl.top/?code=abc&state=state-123',
-            eventOrigin: 'https://secrandom-online.sectl.top',
+                'https://secrandom-lite.sectl.top/?code=abc&state=state-123',
+            eventOrigin: 'https://secrandom-lite.sectl.top',
             isFromExpectedPopupWindow: false,
           ),
           isFalse,

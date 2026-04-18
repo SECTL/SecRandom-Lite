@@ -8,7 +8,7 @@ void main() {
       codeVerifier: 'verifier-token',
       targetPlatform: PendingAuthTargetPlatform.windows,
       redirectUri:
-          'https://secrandom-online.sectl.top/auth_callback_windows.html',
+          'https://secrandom-lite.sectl.top/auth_callback_windows.html',
       loopbackPort: 8788,
       createdAt: DateTime.parse('2026-04-05T10:00:00.000Z'),
     );
