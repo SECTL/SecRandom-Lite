@@ -10,7 +10,7 @@ bool isTrustedWebPopupCallbackMessage({
   required Object? href,
   required String eventOrigin,
   required bool isFromExpectedPopupWindow,
-  String callbackBridgeUrl = AuthConfig.authCallbackBridgeUrl,
+  String callbackBridgeUrl = AuthConfig.authCallbackWebUrl,
   String webAppUrl = AuthConfig.webAppUrl,
 }) {
   if (messageType != 'sectl-auth-callback') {

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SECTL Web Callback</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f6f8fb; color: #1c2b36; }
+    .wrap { max-width: 620px; margin: 56px auto; padding: 0 16px; }
+    .card { background: #fff; border-radius: 14px; box-shadow: 0 14px 40px rgba(0,0,0,.08); padding: 24px; }
+    h1 { margin: 0 0 10px; font-size: 24px; }
+    p { margin: 0; line-height: 1.6; color: #50616f; }
+    .muted { margin-top: 10px; font-size: 13px; color: #6b7c89; word-break: break-all; }
+    .err { color: #a1001e; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1 id="title">Completing sign-in</h1>
+      <p id="message">Please wait while we complete authentication.</p>
+      <p id="detail" class="muted"></p>
+    </div>
+  </div>
+
+  <script>
+    const DEFAULT_CLIENT_ID = '69d054360032cf00c164';
+    const DEFAULT_API_BASE = 'https://appwrite.sectl.top';
+    const COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+
+    const ACCESS_KEY = 'sectl_access_token';
+    const REFRESH_KEY = 'sectl_refresh_token';
+    const EXPIRES_KEY = 'sectl_token_expires_at';
+    const DEVICE_UUID_KEY = 'sectl_device_uuid';
+    const SIGNAL_KEY = 'oauth_cookie';
+    const SIGNAL_VALUE = '1';
+
+    const titleEl = document.getElementById('title');
+    const messageEl = document.getElementById('message');
+    const detailEl = document.getElementById('detail');
+
+    function decodeStatePayload(state) {
+      const normalized = state.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+      return JSON.parse(atob(padded));
+    }
+
+    function parseCookies() {
+      const pairs = (document.cookie || '').split(';');
+      const map = {};
+      for (const pair of pairs) {
+        const idx = pair.indexOf('=');
+        if (idx <= 0) continue;
+        const key = decodeURIComponent(pair.slice(0, idx).trim());
+        const value = decodeURIComponent(pair.slice(idx + 1).trim());
+        map[key] = value;
+      }
+      return map;
+    }
+
+    function setCookie(key, value) {
+      const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = `${encodeURIComponent(key)}=${encodeURIComponent(value)}; Max-Age=${COOKIE_MAX_AGE_SECONDS}; Path=/; SameSite=Lax${secure}`;
+    }
+
+    function toUuidV4() {
+      if (window.crypto && window.crypto.randomUUID) {
+        return window.crypto.randomUUID();
+      }
+      const tpl = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx';
+      return tpl.replace(/[xy]/g, (c) => {
+        const r = Math.floor(Math.random() * 16);
+        const v = c === 'x' ? r : ((r & 0x3) | 0x8);
+        return v.toString(16);
+      });
+    }
+
+    async function fetchPublicIp() {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        const resp = await fetch('https://api64.ipify.org?format=json', { signal: controller.signal });
+        clearTimeout(timeout);
+        if (resp.ok) {
+          const data = await resp.json();
+          if (data && typeof data.ip === 'string' && data.ip) return data.ip;
+        }
+      } catch (_) {}
+      return '127.0.0.1';
+    }
+
+    function normalizeTokens(data) {
+      const rawAccess = String(data.access_token || '');
+      const rawRefresh = data.refresh_token ? String(data.refresh_token) : '';
+      const parts = rawAccess.split('|');
+      return {
+        accessToken: parts[0] || '',
+        refreshToken: rawRefresh || (parts[1] || ''),
+        expiresIn: Number(data.expires_in || 3600),
+      };
+    }
+
+    function assertAllowedWebAppUrl(value) {
+      const target = new URL(value);
+      const expected = new URL('/', window.location.href);
+      const expectedPath = expected.pathname.endsWith('/') ? expected.pathname : `${expected.pathname}/`;
+      if (target.origin !== expected.origin) throw new Error('Web callback origin mismatch.');
+      if (!target.pathname.startsWith(expectedPath)) throw new Error('Web callback path mismatch.');
+      target.hash = '';
+      return target;
+    }
+
+    function notifyOrRedirect(targetUrl) {
+      const target = new URL(targetUrl);
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage(
+          JSON.stringify({ type: 'sectl-auth-callback', href: target.toString() }),
+          target.origin,
+        );
+        setTimeout(() => window.close(), 120);
+        return;
+      }
+      window.location.assign(target.toString());
+    }
+
+    async function exchangeToken({ code, payload, state }) {
+      const redirectUri = (payload.ru && typeof payload.ru === 'string')
+        ? payload.ru
+        : `${window.location.origin}${window.location.pathname}`;
+      const clientId = (payload.cid && typeof payload.cid === 'string') ? payload.cid : DEFAULT_CLIENT_ID;
+      const apiBase = (payload.api && typeof payload.api === 'string') ? payload.api : DEFAULT_API_BASE;
+      const codeVerifier = payload.cv;
+      if (!codeVerifier || typeof codeVerifier !== 'string') {
+        throw new Error('Missing code verifier in state.');
+      }
+
+      const cookies = parseCookies();
+      const deviceUuid = cookies[DEVICE_UUID_KEY] || toUuidV4();
+      const ipAddress = await fetchPublicIp();
+
+      const resp = await fetch(`${apiBase}/api/oauth/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          grant_type: 'authorization_code',
+          code,
+          client_id: clientId,
+          redirect_uri: redirectUri,
+          code_verifier: codeVerifier,
+          device_uuid: deviceUuid,
+          ip_address: ipAddress,
+        }),
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || `Token exchange failed: ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      const token = normalizeTokens(data);
+      if (!token.accessToken) throw new Error('Missing access token.');
+
+      const expiresAt = token.expiresIn > 0
+        ? new Date(Date.now() + token.expiresIn * 1000).toISOString()
+        : '';
+
+      setCookie(ACCESS_KEY, token.accessToken);
+      if (token.refreshToken) setCookie(REFRESH_KEY, token.refreshToken);
+      if (expiresAt) setCookie(EXPIRES_KEY, expiresAt);
+      setCookie(DEVICE_UUID_KEY, deviceUuid);
+
+      const webApp = assertAllowedWebAppUrl(payload.w || `${window.location.origin}/`);
+      webApp.searchParams.set(SIGNAL_KEY, SIGNAL_VALUE);
+      webApp.searchParams.set('state', state);
+      notifyOrRedirect(webApp.toString());
+    }
+
+    (async function main() {
+      try {
+        const url = new URL(window.location.href);
+        const code = url.searchParams.get('code');
+        const state = url.searchParams.get('state');
+        const error = url.searchParams.get('error');
+        const errorDescription = url.searchParams.get('error_description');
+
+        if (!state) throw new Error('Missing OAuth state.');
+        const payload = decodeStatePayload(state);
+        if (!payload || payload.t !== 'web') throw new Error('Invalid callback target.');
+
+        if (error) {
+          const webApp = assertAllowedWebAppUrl(payload.w || `${window.location.origin}/`);
+          webApp.searchParams.set('error', error);
+          webApp.searchParams.set('state', state);
+          if (errorDescription) webApp.searchParams.set('error_description', errorDescription);
+          notifyOrRedirect(webApp.toString());
+          return;
+        }
+
+        if (!code) throw new Error('Missing authorization code.');
+        await exchangeToken({ code, payload, state });
+      } catch (err) {
+        titleEl.textContent = 'Sign-in failed';
+        messageEl.textContent = 'We could not complete sign-in.';
+        detailEl.textContent = err instanceof Error ? err.message : String(err);
+        detailEl.classList.add('err');
+      }
+    })();
+  </script>
+</body>
+</html>

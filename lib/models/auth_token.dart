@@ -21,10 +21,17 @@ class AuthToken {
     final expiresAt = expiresIn > 0
         ? DateTime.now().add(Duration(seconds: expiresIn))
         : null;
+    final rawAccessToken = json['access_token'] as String;
+    final rawRefreshToken = json['refresh_token'] as String?;
+
+    final tokenParts = rawAccessToken.split('|');
+    final normalizedAccessToken = tokenParts.first;
+    final normalizedRefreshToken =
+        rawRefreshToken ?? (tokenParts.length > 1 ? tokenParts[1] : null);
 
     return AuthToken(
-      accessToken: json['access_token'] as String,
-      refreshToken: json['refresh_token'] as String?,
+      accessToken: normalizedAccessToken,
+      refreshToken: normalizedRefreshToken,
       tokenType: json['token_type'] as String? ?? 'Bearer',
       expiresIn: expiresIn,
       expiresAt: expiresAt,

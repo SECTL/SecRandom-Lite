@@ -60,16 +60,18 @@ class UserInfo {
 
   factory UserInfo.fromJson(Map<String, dynamic> json) {
     return UserInfo(
-      userId: json['user_id'] as String,
-      email: json['email'] as String,
-      name: json['name'] as String,
+      userId: _stringValue(json['user_id']),
+      email: _stringValue(json['email']),
+      name: _stringValue(json['name'], fallback: '用户'),
       githubUsername: json['github_username'] as String?,
-      permission: json['permission'].toString(),
-      role: json['role'] as String,
+      permission: _stringValue(json['permission'], fallback: 'user'),
+      role: _stringValue(json['role'], fallback: '普通用户'),
       avatarUrl: json['avatar_url'] as String?,
       backgroundUrl: json['background_url'] as String?,
       bio: json['bio'] as String? ?? '',
-      tags: json['tags'] is List ? (json['tags'] as List<dynamic>).map((e) => e.toString()).toList() : [],
+      tags: json['tags'] is List
+          ? (json['tags'] as List<dynamic>).map((e) => e.toString()).toList()
+          : [],
       gender: json['gender'] as String? ?? 'secret',
       genderVisible: json['gender_visible'] as bool? ?? false,
       birthDate: json['birth_date'] as String?,
@@ -80,13 +82,30 @@ class UserInfo {
       locationVisible: json['location_visible'] as bool? ?? false,
       website: json['website'] as String?,
       emailVisible: json['email_visible'] as bool? ?? false,
-      developedPlatforms: (json['developed_platforms'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
-      contributedPlatforms: (json['contributed_platforms'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      developedPlatforms:
+          (json['developed_platforms'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
+      contributedPlatforms:
+          (json['contributed_platforms'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          [],
       userType: json['user_type'] as String? ?? 'normal',
-      createdAt: json['created_at'] as String,
-      platformId: json['platform_id'] as String,
-      loginTime: json['login_time'] as String,
+      createdAt: _stringValue(json['created_at']),
+      platformId: _stringValue(json['platform_id']),
+      loginTime: _stringValue(json['login_time']),
     );
+  }
+
+  static String _stringValue(Object? value, {String fallback = ''}) {
+    if (value == null) {
+      return fallback;
+    }
+
+    final text = value.toString();
+    return text.isEmpty ? fallback : text;
   }
 
   Map<String, dynamic> toJson() {

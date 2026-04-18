@@ -1,20 +1,22 @@
 import 'dart:convert';
 
-enum PendingAuthTargetPlatform { web, android, desktop }
+enum PendingAuthTargetPlatform { web, android, windows }
 
 class PendingAuthSession {
   const PendingAuthSession({
     required this.state,
     required this.codeVerifier,
     required this.targetPlatform,
+    required this.redirectUri,
     required this.createdAt,
-    this.desktopPort,
+    this.loopbackPort,
   });
 
   final String state;
   final String codeVerifier;
   final PendingAuthTargetPlatform targetPlatform;
-  final int? desktopPort;
+  final String redirectUri;
+  final int? loopbackPort;
   final DateTime createdAt;
 
   bool get isExpired =>
@@ -25,7 +27,8 @@ class PendingAuthSession {
       'state': state,
       'code_verifier': codeVerifier,
       'target_platform': targetPlatform.name,
-      'desktop_port': desktopPort,
+      'redirect_uri': redirectUri,
+      'loopback_port': loopbackPort,
       'created_at': createdAt.toIso8601String(),
     };
   }
@@ -36,10 +39,9 @@ class PendingAuthSession {
     return PendingAuthSession(
       state: json['state'] as String,
       codeVerifier: json['code_verifier'] as String,
-      targetPlatform: PendingAuthTargetPlatform.values.firstWhere(
-        (value) => value.name == json['target_platform'],
-      ),
-      desktopPort: json['desktop_port'] as int?,
+      targetPlatform: _parseTargetPlatform(json['target_platform'] as String?),
+      redirectUri: (json['redirect_uri'] as String?) ?? '',
+      loopbackPort: (json['loopback_port'] ?? json['desktop_port']) as int?,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
@@ -48,5 +50,18 @@ class PendingAuthSession {
     return PendingAuthSession.fromJson(
       jsonDecode(jsonString) as Map<String, dynamic>,
     );
+  }
+
+  static PendingAuthTargetPlatform _parseTargetPlatform(String? value) {
+    if (value == PendingAuthTargetPlatform.web.name) {
+      return PendingAuthTargetPlatform.web;
+    }
+    if (value == PendingAuthTargetPlatform.android.name) {
+      return PendingAuthTargetPlatform.android;
+    }
+    if (value == PendingAuthTargetPlatform.windows.name || value == 'desktop') {
+      return PendingAuthTargetPlatform.windows;
+    }
+    return PendingAuthTargetPlatform.web;
   }
 }

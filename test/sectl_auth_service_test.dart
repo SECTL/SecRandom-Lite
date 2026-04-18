@@ -3,13 +3,24 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:secrandom_lite/models/auth_token.dart';
 import 'package:secrandom_lite/models/pending_auth_session.dart';
+import 'package:secrandom_lite/models/user_info.dart';
+import 'package:secrandom_lite/services/auth/auth_config.dart';
 import 'package:secrandom_lite/services/auth/auth_web_security.dart';
 import 'package:secrandom_lite/services/auth/key_value_store.dart';
 import 'package:secrandom_lite/services/auth/sectl_auth_service.dart';
 import 'package:secrandom_lite/services/auth/token_manager.dart';
 
 void main() {
+  final standardUuidPattern = RegExp(
+    r'^[0-9a-fA-F]{8}-'
+    r'[0-9a-fA-F]{4}-'
+    r'[0-9a-fA-F]{4}-'
+    r'[0-9a-fA-F]{4}-'
+    r'[0-9a-fA-F]{12}$',
+  );
+
   group('SectlAuthService', () {
     test('authorization URL includes PKCE challenge and bridge redirect', () {
       const verifier = 'verifier-1234567890';
@@ -20,6 +31,7 @@ void main() {
         state: 'state-123',
         codeVerifier: verifier,
         targetPlatform: PendingAuthTargetPlatform.web,
+        redirectUri: AuthConfig.webOauthRedirectUri,
         createdAt: DateTime.now(),
       );
 
@@ -33,7 +45,7 @@ void main() {
       );
       expect(
         url.queryParameters['redirect_uri'],
-        'https://secrandom-online.sectl.top/auth_callback',
+        'https://secrandom-online.sectl.top/auth_callback_web.html',
       );
     });
 
@@ -42,6 +54,9 @@ void main() {
       final service = SectlAuthService(
         tokenManager: TokenManager(store: InMemoryKeyValueStore()),
         httpClient: MockClient((request) async {
+          if (request.url.toString() == AuthConfig.publicIpLookupUrl) {
+            return http.Response(jsonEncode({'ip': '203.0.113.10'}), 200);
+          }
           capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
           return http.Response(
             jsonEncode({
@@ -55,14 +70,149 @@ void main() {
         }),
       );
 
-      await service.exchangeCode('auth-code', codeVerifier: 'pkce-verifier');
+      await service.exchangeCode(
+        'auth-code',
+        redirectUri: AuthConfig.webOauthRedirectUri,
+        codeVerifier: 'pkce-verifier',
+      );
 
       expect(capturedBody?['grant_type'], 'authorization_code');
       expect(capturedBody?['code'], 'auth-code');
       expect(capturedBody?['code_verifier'], 'pkce-verifier');
-      expect(capturedBody?['device_uuid'], isNotNull);
+      expect(capturedBody?['device_uuid'], matches(standardUuidPattern));
+      expect(capturedBody?['ip_address'], '203.0.113.10');
       expect(capturedBody?.containsKey('client_secret'), isFalse);
     });
+
+    test('exchangeCode normalizes composite access token response', () async {
+      final service = SectlAuthService(
+        tokenManager: TokenManager(store: InMemoryKeyValueStore()),
+        httpClient: MockClient((request) async {
+          if (request.url.toString() == AuthConfig.publicIpLookupUrl) {
+            return http.Response(jsonEncode({'ip': '203.0.113.10'}), 200);
+          }
+
+          return http.Response(
+            jsonEncode({
+              'access_token': 'jwt-token-part|embedded-refresh-token',
+              'token_type': 'Bearer',
+              'expires_in': 3600,
+            }),
+            200,
+          );
+        }),
+      );
+
+      final token = await service.exchangeCode(
+        'auth-code',
+        redirectUri: AuthConfig.webOauthRedirectUri,
+        codeVerifier: 'pkce-verifier',
+      );
+
+      expect(token.accessToken, 'jwt-token-part');
+      expect(token.refreshToken, 'embedded-refresh-token');
+    });
+
+    test('refreshToken sends device_uuid and ip_address', () async {
+      Map<String, dynamic>? capturedBody;
+      final service = SectlAuthService(
+        tokenManager: TokenManager(store: InMemoryKeyValueStore()),
+        httpClient: MockClient((request) async {
+          if (request.url.toString() == AuthConfig.publicIpLookupUrl) {
+            return http.Response(jsonEncode({'ip': '203.0.113.11'}), 200);
+          }
+
+          capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+          return http.Response(
+            jsonEncode({
+              'access_token': 'access-token',
+              'refresh_token': 'refresh-token',
+              'token_type': 'Bearer',
+              'expires_in': 3600,
+            }),
+            200,
+          );
+        }),
+      );
+
+      await service.refreshToken('stored-refresh-token');
+
+      expect(capturedBody?['grant_type'], 'refresh_token');
+      expect(capturedBody?['refresh_token'], 'stored-refresh-token');
+      expect(capturedBody?['device_uuid'], matches(standardUuidPattern));
+      expect(capturedBody?['ip_address'], '203.0.113.11');
+    });
+
+    test(
+      'AuthToken.fromJson keeps explicit refresh_token when present',
+      () async {
+        final token = AuthToken.fromJson({
+          'access_token': 'jwt-token-part|embedded-refresh-token',
+          'refresh_token': 'explicit-refresh-token',
+          'token_type': 'Bearer',
+          'expires_in': 3600,
+        });
+
+        expect(token.accessToken, 'jwt-token-part');
+        expect(token.refreshToken, 'explicit-refresh-token');
+      },
+    );
+
+    test('UserInfo.fromJson tolerates nullable backend metadata fields', () {
+      final userInfo = UserInfo.fromJson({
+        'user_id': 'user_123',
+        'email': 'user@example.com',
+        'name': 'Test User',
+        'github_username': null,
+        'permission': null,
+        'role': null,
+        'avatar_url': null,
+        'background_url': null,
+        'bio': null,
+        'tags': null,
+        'gender': null,
+        'gender_visible': null,
+        'birth_date': null,
+        'birth_calendar_type': null,
+        'birth_year_visible': null,
+        'birth_visible': null,
+        'location': null,
+        'location_visible': null,
+        'website': null,
+        'email_visible': null,
+        'developed_platforms': null,
+        'contributed_platforms': null,
+        'user_type': null,
+        'created_at': null,
+        'platform_id': null,
+        'login_time': null,
+      });
+
+      expect(userInfo.permission, 'user');
+      expect(userInfo.role, '普通用户');
+      expect(userInfo.bio, '');
+      expect(userInfo.gender, 'secret');
+      expect(userInfo.createdAt, '');
+      expect(userInfo.platformId, '');
+      expect(userInfo.loginTime, '');
+    });
+
+    test(
+      'invalid persisted device_uuid is replaced with standard UUID',
+      () async {
+        final store = InMemoryKeyValueStore();
+        await store.write(
+          key: 'sectl_device_uuid',
+          value: '69d054360032cf00c164_deadbeefdeadbeefdeadbeefdeadbeef',
+        );
+
+        final tokenManager = TokenManager(store: store);
+        final deviceUuid = await tokenManager.getOrCreateDeviceUuid();
+
+        expect(deviceUuid, matches(standardUuidPattern));
+        expect(await store.read(key: 'sectl_device_uuid'), deviceUuid);
+      },
+    );
 
     test('trusted web callback URI only accepts configured app origin', () {
       final trustedUri = parseTrustedWebAppCallbackUri(
@@ -136,6 +286,7 @@ void main() {
             state: 'state-value',
             codeVerifier: 'verifier',
             targetPlatform: PendingAuthTargetPlatform.web,
+            redirectUri: AuthConfig.webOauthRedirectUri,
             createdAt: DateTime.now(),
           ),
         );
@@ -173,7 +324,11 @@ void main() {
                 200,
               );
             }),
-          ).exchangeCode('seed-code', codeVerifier: 'seed-verifier'),
+          ).exchangeCode(
+            'seed-code',
+            redirectUri: AuthConfig.webOauthRedirectUri,
+            codeVerifier: 'seed-verifier',
+          ),
         );
 
         final service = SectlAuthService(

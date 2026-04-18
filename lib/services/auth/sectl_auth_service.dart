@@ -12,6 +12,7 @@ import '../../models/auth_token.dart';
 import '../../models/pending_auth_session.dart';
 import '../../models/user_info.dart';
 import 'auth_config.dart';
+import 'client_ip.dart';
 import 'loopback_server.dart';
 import 'platform_info.dart';
 import 'token_manager.dart';
@@ -80,33 +81,40 @@ class SectlAuthService {
 
   static Map<String, dynamic> buildTokenExchangePayload({
     required String code,
+    required String redirectUri,
     required String codeVerifier,
     required String deviceUuid,
+    required String ipAddress,
   }) {
     return {
       'grant_type': 'authorization_code',
       'code': code,
       'client_id': AuthConfig.platformId,
-      'redirect_uri': AuthConfig.oauthRedirectUri,
+      'redirect_uri': redirectUri,
       'code_verifier': codeVerifier,
       'device_uuid': deviceUuid,
+      'ip_address': ipAddress,
     };
   }
 
   static Map<String, dynamic> buildRefreshPayload({
     required String refreshToken,
+    required String deviceUuid,
+    required String ipAddress,
   }) {
     return {
       'grant_type': 'refresh_token',
       'refresh_token': refreshToken,
       'client_id': AuthConfig.platformId,
+      'device_uuid': deviceUuid,
+      'ip_address': ipAddress,
     };
   }
 
   String getAuthorizationUrl(PendingAuthSession session) {
     final params = {
       'client_id': AuthConfig.platformId,
-      'redirect_uri': AuthConfig.oauthRedirectUri,
+      'redirect_uri': session.redirectUri,
       'response_type': 'code',
       'state': session.state,
       'code_challenge': generateCodeChallenge(session.codeVerifier),
@@ -127,13 +135,14 @@ class SectlAuthService {
 
     await _cleanupRuntime();
 
+    final codeVerifier = generateCodeVerifier();
+    final loopbackPort = _resolveLoopbackPort(targetPlatform);
     final session = PendingAuthSession(
-      state: _buildState(targetPlatform),
-      codeVerifier: generateCodeVerifier(),
+      state: _buildState(targetPlatform, codeVerifier),
+      codeVerifier: codeVerifier,
       targetPlatform: targetPlatform,
-      desktopPort: targetPlatform == PendingAuthTargetPlatform.desktop
-          ? AuthConfig.loopbackPort
-          : null,
+      redirectUri: _resolveRedirectUri(targetPlatform),
+      loopbackPort: loopbackPort,
       createdAt: DateTime.now(),
     );
 
@@ -199,7 +208,9 @@ class SectlAuthService {
       }
 
       try {
-        final userInfo = await completeLoginFromCallbackUri(uri);
+        final userInfo = _isWebCookieAuthCallback(uri)
+            ? await _completeWebCookieLoginFromCallbackUri(uri)
+            : await completeLoginFromCallbackUri(uri);
         clearBrowserOAuthParams();
         return userInfo;
       } catch (_) {
@@ -258,6 +269,9 @@ class SectlAuthService {
     try {
       final token = await exchangeCode(
         code,
+        redirectUri: pendingSession.redirectUri.isNotEmpty
+            ? pendingSession.redirectUri
+            : AuthConfig.oauthRedirectUri,
         codeVerifier: pendingSession.codeVerifier,
       );
       final userInfo = await getUserInfo(token.accessToken);
@@ -275,14 +289,18 @@ class SectlAuthService {
 
   Future<AuthToken> exchangeCode(
     String code, {
+    required String redirectUri,
     required String codeVerifier,
   }) async {
     final url = Uri.parse('${AuthConfig.baseUrl}${AuthConfig.tokenEndpoint}');
     final deviceUuid = await _tokenManager.getOrCreateDeviceUuid();
+    final ipAddress = await _resolveIpAddress();
     final payload = buildTokenExchangePayload(
       code: code,
+      redirectUri: redirectUri,
       codeVerifier: codeVerifier,
       deviceUuid: deviceUuid,
+      ipAddress: ipAddress,
     );
 
     final response = await _httpClient.post(
@@ -300,11 +318,19 @@ class SectlAuthService {
   }
 
   Future<AuthToken> refreshToken(String refreshToken) async {
+    final deviceUuid = await _tokenManager.getOrCreateDeviceUuid();
+    final ipAddress = await _resolveIpAddress();
     final url = Uri.parse('${AuthConfig.baseUrl}${AuthConfig.refreshEndpoint}');
     final response = await _httpClient.post(
       url,
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(buildRefreshPayload(refreshToken: refreshToken)),
+      body: jsonEncode(
+        buildRefreshPayload(
+          refreshToken: refreshToken,
+          deviceUuid: deviceUuid,
+          ipAddress: ipAddress,
+        ),
+      ),
     );
 
     if (response.statusCode != 200) {
@@ -441,20 +467,24 @@ class SectlAuthService {
           }
         },
       );
-      return;
     }
 
-    if (session.targetPlatform == PendingAuthTargetPlatform.desktop) {
+    if (session.targetPlatform == PendingAuthTargetPlatform.windows ||
+        session.targetPlatform == PendingAuthTargetPlatform.android) {
       _loopbackServer = AuthLoopbackServer();
+      final loopbackPort =
+          session.loopbackPort ??
+          _resolveLoopbackPort(session.targetPlatform) ??
+          AuthConfig.windowsLoopbackPort;
       await _loopbackServer!.start(
         host: AuthConfig.loopbackHost,
-        port: session.desktopPort ?? AuthConfig.loopbackPort,
+        port: loopbackPort,
         path: AuthConfig.loopbackPath,
         onRequest: (uri) => _handleIncomingCallbackUri(
           Uri(
             scheme: 'http',
             host: AuthConfig.loopbackHost,
-            port: session.desktopPort ?? AuthConfig.loopbackPort,
+            port: loopbackPort,
             path: AuthConfig.loopbackPath,
             queryParameters: uri.queryParameters,
           ),
@@ -464,7 +494,7 @@ class SectlAuthService {
   }
 
   Future<void> _handleIncomingCallbackUri(Uri uri) async {
-    if (!_isDeepLinkCallback(uri) && !_isDesktopLoopbackCallback(uri)) {
+    if (!_isDeepLinkCallback(uri) && !_isLoopbackCallback(uri)) {
       return;
     }
 
@@ -489,7 +519,9 @@ class SectlAuthService {
   ) async {
     try {
       final callbackUri = await popupSession.waitForCallback();
-      final userInfo = await completeLoginFromCallbackUri(callbackUri);
+      final userInfo = _isWebCookieAuthCallback(callbackUri)
+          ? await _completeWebCookieLoginFromCallbackUri(callbackUri)
+          : await completeLoginFromCallbackUri(callbackUri);
       if (_activeLoginCompleter != null &&
           !_activeLoginCompleter!.isCompleted) {
         _activeLoginCompleter!.complete(userInfo);
@@ -548,12 +580,15 @@ class SectlAuthService {
     if (PlatformInfo.isWindows ||
         PlatformInfo.isLinux ||
         PlatformInfo.isMacOS) {
-      return PendingAuthTargetPlatform.desktop;
+      return PendingAuthTargetPlatform.windows;
     }
     throw UnsupportedError('SECTL login is not supported on this platform.');
   }
 
-  String _buildState(PendingAuthTargetPlatform targetPlatform) {
+  String _buildState(
+    PendingAuthTargetPlatform targetPlatform,
+    String codeVerifier,
+  ) {
     final payload = <String, dynamic>{
       'n': _randomToken(byteLength: 12),
       't': targetPlatform.name,
@@ -564,13 +599,99 @@ class SectlAuthService {
       payload['w'] = AuthConfig.webAppUrl.isNotEmpty
           ? AuthConfig.webAppUrl
           : resolveCurrentWebAppUrl();
+      payload['cv'] = codeVerifier;
+      payload['cid'] = AuthConfig.platformId;
+      payload['api'] = AuthConfig.baseUrl;
+      payload['ru'] = _resolveRedirectUri(targetPlatform);
     }
 
-    if (targetPlatform == PendingAuthTargetPlatform.desktop) {
-      payload['p'] = AuthConfig.loopbackPort;
+    if (targetPlatform == PendingAuthTargetPlatform.windows ||
+        targetPlatform == PendingAuthTargetPlatform.android) {
+      payload['p'] = _resolveLoopbackPort(targetPlatform);
     }
 
     return encodeStatePayload(payload);
+  }
+
+  int? _resolveLoopbackPort(PendingAuthTargetPlatform targetPlatform) {
+    switch (targetPlatform) {
+      case PendingAuthTargetPlatform.web:
+        return null;
+      case PendingAuthTargetPlatform.android:
+        return AuthConfig.androidLoopbackPort;
+      case PendingAuthTargetPlatform.windows:
+        return AuthConfig.windowsLoopbackPort;
+    }
+  }
+
+  String _resolveRedirectUri(PendingAuthTargetPlatform targetPlatform) {
+    switch (targetPlatform) {
+      case PendingAuthTargetPlatform.web:
+        return AuthConfig.webOauthRedirectUri;
+      case PendingAuthTargetPlatform.android:
+        return AuthConfig.androidOauthRedirectUri;
+      case PendingAuthTargetPlatform.windows:
+        return AuthConfig.windowsOauthRedirectUri;
+    }
+  }
+
+  Future<UserInfo> _completeWebCookieLoginFromCallbackUri(Uri uri) async {
+    final pendingSession = await _tokenManager.getPendingAuthSession();
+    if (pendingSession == null) {
+      throw StateError('No pending SECTL login session was found.');
+    }
+
+    if (pendingSession.isExpired) {
+      await _tokenManager.clearPendingAuthSession();
+      await _cleanupRuntime();
+      throw StateError('The pending SECTL login session has expired.');
+    }
+
+    final error = uri.queryParameters['error'];
+    if (error != null) {
+      final description =
+          uri.queryParameters['error_description'] ?? 'Authorization failed.';
+      await _tokenManager.clearPendingAuthSession();
+      await _cleanupRuntime(clearCompleter: false);
+      throw AuthApiException(
+        statusCode: 400,
+        error: error,
+        description: description,
+      );
+    }
+
+    final returnedState = uri.queryParameters['state'];
+    if (returnedState != pendingSession.state) {
+      await _tokenManager.clearPendingAuthSession();
+      await _cleanupRuntime(clearCompleter: false);
+      throw StateError('SECTL login state validation failed.');
+    }
+
+    final restored = await _tokenManager.restoreTokenFromCookieIfPresent();
+    if (!restored) {
+      await _tokenManager.clearPendingAuthSession();
+      await _cleanupRuntime(clearCompleter: false);
+      throw StateError('SECTL login cookie data is unavailable.');
+    }
+
+    final accessToken = await _tokenManager.getAccessToken();
+    if (accessToken == null || accessToken.isEmpty) {
+      await _tokenManager.clearPendingAuthSession();
+      await _cleanupRuntime(clearCompleter: false);
+      throw StateError('SECTL did not provide a valid access token.');
+    }
+
+    try {
+      final userInfo = await getUserInfo(accessToken);
+      await _tokenManager.saveUserInfo(userInfo);
+      await _tokenManager.clearPendingAuthSession();
+      await _cleanupRuntime(clearCompleter: false);
+      return userInfo;
+    } catch (_) {
+      await _tokenManager.clearPendingAuthSession();
+      await _cleanupRuntime(clearCompleter: false);
+      rethrow;
+    }
   }
 
   String _randomToken({required int byteLength}) {
@@ -581,7 +702,13 @@ class SectlAuthService {
 
   bool _looksLikeWebOAuthCallback(Uri uri) {
     return uri.queryParameters.containsKey('code') ||
-        uri.queryParameters.containsKey('error');
+        uri.queryParameters.containsKey('error') ||
+        _isWebCookieAuthCallback(uri);
+  }
+
+  bool _isWebCookieAuthCallback(Uri uri) {
+    return uri.queryParameters[AuthConfig.webCookieAuthSignalKey] ==
+        AuthConfig.webCookieAuthSignalValue;
   }
 
   bool _isDeepLinkCallback(Uri uri) {
@@ -590,7 +717,7 @@ class SectlAuthService {
         uri.path == AuthConfig.callbackPath;
   }
 
-  bool _isDesktopLoopbackCallback(Uri uri) {
+  bool _isLoopbackCallback(Uri uri) {
     final host = uri.host.toLowerCase();
     return uri.scheme == 'http' &&
         (host == AuthConfig.loopbackHost || host == 'localhost') &&
@@ -612,6 +739,32 @@ class SectlAuthService {
         description: 'HTTP ${response.statusCode}',
       );
     }
+  }
+
+  Future<String> _resolveIpAddress() async {
+    try {
+      final response = await _httpClient
+          .get(Uri.parse(AuthConfig.publicIpLookupUrl))
+          .timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data is Map<String, dynamic>) {
+          final ip = data['ip'];
+          if (ip is String && ip.isNotEmpty) {
+            return ip;
+          }
+        }
+      }
+    } catch (_) {
+      // Fall back to local IP resolution.
+    }
+
+    final localIp = await getLocalIpAddress();
+    if (localIp != null && localIp.isNotEmpty) {
+      return localIp;
+    }
+
+    return '127.0.0.1';
   }
 
   Future<void> _cleanupRuntime({bool clearCompleter = true}) async {

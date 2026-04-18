@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SECTL Android Callback</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f6f8fb; color: #1c2b36; }
+    .wrap { max-width: 620px; margin: 56px auto; padding: 0 16px; }
+    .card { background: #fff; border-radius: 14px; box-shadow: 0 14px 40px rgba(0,0,0,.08); padding: 24px; }
+    h1 { margin: 0 0 10px; font-size: 24px; }
+    p { margin: 0; line-height: 1.6; color: #50616f; }
+    .muted { margin-top: 10px; font-size: 13px; color: #6b7c89; word-break: break-all; }
+    .actions { margin-top: 18px; }
+    .btn {
+      display: inline-block; text-decoration: none; color: #fff; background: #1569b3;
+      border-radius: 10px; padding: 10px 14px; font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>授权回调已完成</h1>
+      <p id="message">正在将授权结果发送给 Android 客户端…</p>
+      <p class="muted">返回应用查看结果。</p>
+      <div class="actions">
+        <a id="manualLink" class="btn" href="#">手动返回应用</a>
+      </div>
+      <p id="detail" class="muted"></p>
+    </div>
+  </div>
+
+  <script>
+    const messageEl = document.getElementById('message');
+    const manualLinkEl = document.getElementById('manualLink');
+    const detailEl = document.getElementById('detail');
+
+    function decodeStatePayload(state) {
+      const normalized = state.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+      return JSON.parse(atob(padded));
+    }
+
+    async function forwardToLoopback(port, params) {
+      const target = new URL(`http://127.0.0.1:${port}/callback`);
+      target.search = params.toString();
+      await fetch(target.toString(), { method: 'GET', mode: 'no-cors', cache: 'no-store' });
+      return target.toString();
+    }
+
+    function buildDeepLink(params) {
+      return `secrandom://auth/callback?${params.toString()}`;
+    }
+
+    (async function main() {
+      try {
+        const currentUrl = new URL(window.location.href);
+        const state = currentUrl.searchParams.get('state');
+        if (!state) throw new Error('Missing OAuth state.');
+
+        const payload = decodeStatePayload(state);
+        if (!payload || payload.t !== 'android') {
+          throw new Error('Invalid callback target.');
+        }
+
+        const port = Number(payload.p);
+        if (!Number.isInteger(port) || port < 1 || port > 65535) {
+          throw new Error('Invalid local callback port.');
+        }
+
+        const callbackParams = new URLSearchParams();
+        const code = currentUrl.searchParams.get('code');
+        const error = currentUrl.searchParams.get('error');
+        const errorDescription = currentUrl.searchParams.get('error_description');
+        if (code) callbackParams.set('code', code);
+        callbackParams.set('state', state);
+        if (error) callbackParams.set('error', error);
+        if (errorDescription) callbackParams.set('error_description', errorDescription);
+
+        const loopbackUrl = await forwardToLoopback(port, callbackParams);
+        const deepLinkUrl = buildDeepLink(callbackParams);
+
+        manualLinkEl.href = deepLinkUrl;
+        detailEl.textContent = loopbackUrl;
+        messageEl.textContent = '授权结果已发送，正在尝试返回应用。';
+
+        setTimeout(() => {
+          window.location.assign(deepLinkUrl);
+        }, 120);
+      } catch (err) {
+        messageEl.textContent = '发送回调失败，请返回应用后重试登录。';
+        detailEl.textContent = err instanceof Error ? err.message : String(err);
+      }
+    })();
+  </script>
+</body>
+</html>

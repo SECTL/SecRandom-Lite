@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SECTL Windows Callback</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #f6f8fb; color: #1c2b36; }
+    .wrap { max-width: 620px; margin: 56px auto; padding: 0 16px; }
+    .card { background: #fff; border-radius: 14px; box-shadow: 0 14px 40px rgba(0,0,0,.08); padding: 24px; }
+    h1 { margin: 0 0 10px; font-size: 24px; }
+    p { margin: 0; line-height: 1.6; color: #50616f; }
+    .muted { margin-top: 10px; font-size: 13px; color: #6b7c89; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>授权回调已完成</h1>
+      <p id="message">正在将授权结果发送给客户端…</p>
+      <p class="muted">现在你可以关闭浏览器了。</p>
+      <p id="detail" class="muted"></p>
+    </div>
+  </div>
+
+  <script>
+    const messageEl = document.getElementById('message');
+    const detailEl = document.getElementById('detail');
+
+    function decodeStatePayload(state) {
+      const normalized = state.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = normalized + '='.repeat((4 - normalized.length % 4) % 4);
+      return JSON.parse(atob(padded));
+    }
+
+    async function forwardToLoopback(port, params) {
+      const target = new URL(`http://127.0.0.1:${port}/callback`);
+      target.search = params.toString();
+      await fetch(target.toString(), { method: 'GET', mode: 'no-cors', cache: 'no-store' });
+      return target.toString();
+    }
+
+    (async function main() {
+      try {
+        const currentUrl = new URL(window.location.href);
+        const state = currentUrl.searchParams.get('state');
+        if (!state) throw new Error('Missing OAuth state.');
+
+        const payload = decodeStatePayload(state);
+        if (!payload || (payload.t !== 'windows' && payload.t !== 'desktop')) {
+          throw new Error('Invalid callback target.');
+        }
+
+        const port = Number(payload.p);
+        if (!Number.isInteger(port) || port < 1 || port > 65535) {
+          throw new Error('Invalid local callback port.');
+        }
+
+        const callbackParams = new URLSearchParams();
+        const code = currentUrl.searchParams.get('code');
+        const error = currentUrl.searchParams.get('error');
+        const errorDescription = currentUrl.searchParams.get('error_description');
+        if (code) callbackParams.set('code', code);
+        callbackParams.set('state', state);
+        if (error) callbackParams.set('error', error);
+        if (errorDescription) callbackParams.set('error_description', errorDescription);
+
+        const targetUrl = await forwardToLoopback(port, callbackParams);
+        messageEl.textContent = '授权结果已发送到客户端，本页面可直接关闭。';
+        detailEl.textContent = targetUrl;
+      } catch (err) {
+        messageEl.textContent = '授权结果发送失败，请返回应用后重试登录。';
+        detailEl.textContent = err instanceof Error ? err.message : String(err);
+      }
+    })();
+  </script>
+</body>
+</html>

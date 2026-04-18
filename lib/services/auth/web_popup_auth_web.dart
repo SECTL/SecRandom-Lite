@@ -99,7 +99,7 @@ class WebAuthPopupSession {
       href: payload['href'],
       eventOrigin: event.origin,
       isFromExpectedPopupWindow: _isExpectedPopupSource(event.source),
-      callbackBridgeUrl: AuthConfig.oauthRedirectUri,
+      callbackBridgeUrl: AuthConfig.webOauthRedirectUri,
     );
   }
 
@@ -164,7 +164,9 @@ class WebAuthPopupSession {
 
       final uri = Uri.parse(hrefString);
       if (uri.queryParameters.containsKey('code') ||
-          uri.queryParameters.containsKey('error')) {
+          uri.queryParameters.containsKey('error') ||
+          uri.queryParameters[AuthConfig.webCookieAuthSignalKey] ==
+              AuthConfig.webCookieAuthSignalValue) {
         return uri;
       }
     } catch (_) {
