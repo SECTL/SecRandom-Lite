@@ -230,95 +230,98 @@ class _RollCallSettingsScreenState extends State<RollCallSettingsScreen> {
           final classNames = provider.groups;
           final students = provider.allStudents;
 
-          if (_isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
+          return Column(
+            children: [
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : classNames.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.class_outlined,
+                              size: 64,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              '暂无班级',
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              '点击右下角 + 按钮创建新班级',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey[500],
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ResponsiveGrid(
+                        padding: const EdgeInsets.all(16),
+                        children: classNames.map((className) {
+                          final classStudents = students.where((s) => s.className == className).toList();
+                          final existingCount = classStudents.where((s) => s.exist).length;
+                          final totalCount = classStudents.length;
 
-          if (classNames.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.class_outlined,
-                    size: 64,
-                    color: Colors.grey[400],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '暂无班级',
-                    style: TextStyle(
-                      fontSize: 18,
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '点击右下角 + 按钮创建新班级',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey[500],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return ResponsiveGrid(
-            children: classNames.map((className) {
-              final classStudents = students.where((s) => s.className == className).toList();
-              final existingCount = classStudents.where((s) => s.exist).length;
-              final totalCount = classStudents.length;
-
-              return Card(
-                child: GestureDetector(
-                  onLongPressStart: _isMobilePlatform
-                      ? (details) async {
-                          await _showClassActionMenuAtPosition(
-                            provider,
-                            className,
-                            totalCount,
-                            details.globalPosition,
+                          return Card(
+                            child: GestureDetector(
+                              onLongPressStart: _isMobilePlatform
+                                  ? (details) async {
+                                      await _showClassActionMenuAtPosition(
+                                        provider,
+                                        className,
+                                        totalCount,
+                                        details.globalPosition,
+                                      );
+                                    }
+                                  : null,
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: Theme.of(context).colorScheme.primary,
+                                  child: Text(
+                                    className.isEmpty ? '?' : className[0].toUpperCase(),
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                ),
+                                title: Text(
+                                  className,
+                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                                ),
+                                subtitle: Text('学生数量: $existingCount | 总数: $totalCount'),
+                                trailing: _isMobilePlatform
+                                    ? null
+                                    : PopupMenuButton<_EntryAction>(
+                                        tooltip: '更多',
+                                        onSelected: (action) =>
+                                            _handleClassAction(provider, className, totalCount, action),
+                                        itemBuilder: (context) => const [
+                                          PopupMenuItem<_EntryAction>(
+                                            value: _EntryAction.edit,
+                                            child: Text('编辑'),
+                                          ),
+                                          PopupMenuItem<_EntryAction>(
+                                            value: _EntryAction.delete,
+                                            child: Text('删除'),
+                                          ),
+                                        ],
+                                        icon: const Icon(Icons.more_vert),
+                                      ),
+                                onTap: () => _openClass(className),
+                              ),
+                            ),
                           );
-                        }
-                      : null,
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      child: Text(
-                        className.isEmpty ? '?' : className[0].toUpperCase(),
-                        style: const TextStyle(color: Colors.white),
+                        }).toList(),
                       ),
-                    ),
-                    title: Text(
-                      className,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text('学生数量: $existingCount | 总数: $totalCount'),
-                    trailing: _isMobilePlatform
-                        ? null
-                        : PopupMenuButton<_EntryAction>(
-                            tooltip: '更多',
-                            onSelected: (action) =>
-                                _handleClassAction(provider, className, totalCount, action),
-                            itemBuilder: (context) => const [
-                              PopupMenuItem<_EntryAction>(
-                                value: _EntryAction.edit,
-                                child: Text('编辑'),
-                              ),
-                              PopupMenuItem<_EntryAction>(
-                                value: _EntryAction.delete,
-                                child: Text('删除'),
-                              ),
-                            ],
-                            icon: const Icon(Icons.more_vert),
-                          ),
-                    onTap: () => _openClass(className),
-                  ),
-                ),
-              );
-            }).toList(),
+              ),
+            ],
           );
         },
       ),

@@ -34,8 +34,11 @@ Future<void> _waitForProviderLoaded(AppProvider provider) async {
   fail('AppProvider did not finish loading in time');
 }
 
-Future<void> _waitForPersistence() async {
-  await Future<void>.delayed(const Duration(milliseconds: 100));
+void _registerProviderTearDown(AppProvider provider) {
+  addTearDown(() async {
+    await provider.waitForPendingConfigSave();
+    provider.dispose();
+  });
 }
 
 void main() {
@@ -48,6 +51,7 @@ void main() {
 
   test('manual stop defers rollcall side effects until stop', () async {
     final provider = AppProvider();
+    _registerProviderTearDown(provider);
     await _waitForProviderLoaded(provider);
 
     provider.setFairDrawEnabled(false);
@@ -72,11 +76,11 @@ void main() {
     expect(provider.remainingCount, beforeRemaining - 1);
     expect(provider.history.length, beforeHistoryCount + 1);
 
-    provider.dispose();
   });
 
   test('repeated stop only finalizes manual rollcall once', () async {
     final provider = AppProvider();
+    _registerProviderTearDown(provider);
     await _waitForProviderLoaded(provider);
 
     provider.setFairDrawEnabled(false);
@@ -95,24 +99,51 @@ void main() {
     expect(provider.remainingCount, beforeRemaining - 1);
     expect(provider.history.length, beforeHistoryCount + 1);
 
-    provider.dispose();
+  });
+
+  test('none mode finalizes immediately without lingering rolling state', () async {
+    final provider = AppProvider();
+    _registerProviderTearDown(provider);
+    await _waitForProviderLoaded(provider);
+
+    provider.setFairDrawEnabled(false);
+    provider.setNonRepeatEnabled(true);
+    provider.setSelectCount(1);
+    provider.setRollcallAnimationMode(AnimationMode.none);
+
+    final beforeRemaining = provider.remainingCount;
+    final beforeHistoryCount = provider.history.length;
+
+    await provider.startRollCall();
+
+    expect(provider.isRolling, isFalse);
+    expect(provider.currentSelection.length, 1);
+    expect(provider.remainingCount, beforeRemaining - 1);
+    expect(provider.history.length, beforeHistoryCount + 1);
+
+    await provider.stopRollCall();
+
+    expect(provider.isRolling, isFalse);
+    expect(provider.currentSelection.length, 1);
+    expect(provider.remainingCount, beforeRemaining - 1);
+    expect(provider.history.length, beforeHistoryCount + 1);
+
   });
 
   test('rollcall and lottery animation modes persist independently', () async {
     final provider = AppProvider();
+    _registerProviderTearDown(provider);
     await _waitForProviderLoaded(provider);
 
     provider.setRollcallAnimationMode(AnimationMode.manualStop);
     provider.setLotteryAnimationMode(AnimationMode.none);
-    await _waitForPersistence();
-    provider.dispose();
+    await provider.waitForPendingConfigSave();
 
     final reloadedProvider = AppProvider();
+    _registerProviderTearDown(reloadedProvider);
     await _waitForProviderLoaded(reloadedProvider);
 
     expect(reloadedProvider.rollcallAnimationMode, AnimationMode.manualStop);
     expect(reloadedProvider.lotteryAnimationMode, AnimationMode.none);
-
-    reloadedProvider.dispose();
   });
 }

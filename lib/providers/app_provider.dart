@@ -25,6 +25,7 @@ class AppProvider with ChangeNotifier {
   AnimationMode _rollcallAnimationMode = AnimationMode.auto;
   AnimationMode _lotteryAnimationMode = AnimationMode.auto;
   int _rollCallSessionId = 0;
+  Future<void> _pendingConfigSave = Future<void>.value();
 
   int _selectCount = 1;
   bool _fairDrawEnabled = true;
@@ -133,8 +134,15 @@ class AppProvider with ChangeNotifier {
       rollcallAnimationMode: _rollcallAnimationMode,
       lotteryAnimationMode: _lotteryAnimationMode,
     );
-    await _dataService.saveConfig(config);
+
+    _pendingConfigSave = _pendingConfigSave.catchError((_) {}).then(
+      (_) => _dataService.saveConfig(config),
+    );
+
+    await _pendingConfigSave;
   }
+
+  Future<void> waitForPendingConfigSave() => _pendingConfigSave;
 
   void _notifyIfActive() {
     if (!_isDisposed) {

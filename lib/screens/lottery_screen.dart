@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/app_config.dart';
 import '../models/prize.dart';
 import '../models/prize_pool.dart';
 import '../models/lottery_record.dart';
@@ -24,13 +25,18 @@ class _LotteryScreenState extends State<LotteryScreen> {
   static const double _kSafeEpsilon = 0.75;
   static const Duration _kResizeDebounce = Duration(milliseconds: 150);
   static const Duration _kStateSwitchMinInterval = Duration(milliseconds: 150);
+  static const Duration _kAutoFinalizeDelay = Duration(seconds: 2);
 
   final LotteryService _lotteryService = LotteryService();
   final Random _random = Random.secure();
 
-  Timer? _timer;
+  Timer? _rollingTimer;
+  Timer? _autoFinalizeTimer;
   List<LotteryRecord> _displayedRecords = [];
   bool _isDrawing = false;
+  bool _isRoundActive = false;
+  bool _isFinalizingDraw = false;
+  int _drawSessionId = 0;
 
   List<PrizePool> _prizePools = [];
   List<Prize> _prizes = [];
@@ -53,7 +59,7 @@ class _LotteryScreenState extends State<LotteryScreen> {
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _invalidateActiveRound();
     super.dispose();
   }
 
@@ -117,20 +123,40 @@ class _LotteryScreenState extends State<LotteryScreen> {
     return _lotteryService.getPrizeRemainingCount(_selectedPool!, _prizes);
   }
 
-  void _startDraw() {
-    if (_selectedPool == null || _drawCount <= 0) return;
-
-    setState(() {
-      _displayedRecords = [];
-      _isDrawing = true;
-    });
-
-    _startRollingAnimation();
+  void _invalidateActiveRound() {
+    _drawSessionId++;
+    _cancelDrawTimers();
   }
 
-  void _startRollingAnimation() {
-    if (_timer != null && _timer!.isActive) return;
+  void _cancelDrawTimers() {
+    _rollingTimer?.cancel();
+    _rollingTimer = null;
+    _autoFinalizeTimer?.cancel();
+    _autoFinalizeTimer = null;
+  }
 
+  Future<void> _handlePoolChanged(PrizePool? pool) async {
+    if (_isRoundActive) return;
+
+    setState(() {
+      _selectedPool = pool;
+      _displayedRecords = [];
+    });
+    await _loadPrizes();
+  }
+
+  void _handleDrawCountChanged(int count) {
+    if (_isRoundActive) return;
+
+    setState(() {
+      _drawCount = count;
+    });
+  }
+
+  void _startDraw() {
+    if (_selectedPool == null || _drawCount <= 0 || _isRoundActive) return;
+
+    final animationMode = context.read<AppProvider>().lotteryAnimationMode;
     final pool = _selectedPool!;
     final availablePrizes = _lotteryService.getAvailablePrizes(pool, _prizes);
 
@@ -138,22 +164,64 @@ class _LotteryScreenState extends State<LotteryScreen> {
       return;
     }
 
-    _timer = Timer.periodic(const Duration(milliseconds: 80), (timer) {
-      if (!mounted) {
+    _drawSessionId++;
+    final sessionId = _drawSessionId;
+
+    setState(() {
+      _displayedRecords = [];
+      _isRoundActive = true;
+      _isDrawing = animationMode != AnimationMode.none;
+    });
+
+    if (animationMode == AnimationMode.none) {
+      unawaited(_finalizeDraw(sessionId: sessionId));
+      return;
+    }
+
+    _startRollingAnimation(sessionId: sessionId, availablePrizes: availablePrizes);
+
+    if (animationMode == AnimationMode.auto) {
+      _autoFinalizeTimer = Timer(_kAutoFinalizeDelay, () {
+        if (!mounted || sessionId != _drawSessionId) {
+          return;
+        }
+        unawaited(_finalizeDraw(sessionId: sessionId));
+      });
+    }
+  }
+
+  void _startRollingAnimation({
+    required int sessionId,
+    required List<Prize> availablePrizes,
+  }) {
+    if (_rollingTimer != null && _rollingTimer!.isActive) return;
+    if (_selectedPool == null || !_isRoundActive || !_isDrawing) {
+      return;
+    }
+
+    final pool = _selectedPool!;
+    final rollingDrawCount = _drawCount;
+
+    _rollingTimer = Timer.periodic(const Duration(milliseconds: 80), (timer) {
+      if (!mounted || sessionId != _drawSessionId || !_isRoundActive || !_isDrawing) {
         timer.cancel();
+        if (identical(_rollingTimer, timer)) {
+          _rollingTimer = null;
+        }
         return;
       }
 
       final List<LotteryRecord> rollingRecords = [];
-      for (int i = 0; i < _drawCount; i++) {
+      final now = DateTime.now();
+      for (int i = 0; i < rollingDrawCount; i++) {
         final randomPrize =
             availablePrizes[_random.nextInt(availablePrizes.length)];
         rollingRecords.add(
           LotteryRecord(
-            id: DateTime.now().millisecondsSinceEpoch.toString() + '_$i',
+            id: '${now.microsecondsSinceEpoch}_${sessionId}_$i',
             poolName: pool.name,
             prizeName: randomPrize.name,
-            drawTime: DateTime.now(),
+            drawTime: now,
             drawCount: 1,
           ),
         );
@@ -165,60 +233,89 @@ class _LotteryScreenState extends State<LotteryScreen> {
         });
       }
     });
-
-    Future.delayed(const Duration(seconds: 2), () {
-      if (mounted) {
-        _stopRollingAnimation();
-        _finalizeDraw();
-      }
-    });
   }
 
-  void _stopRollingAnimation() {
-    _timer?.cancel();
-    _timer = null;
+  void _stopRollingAnimation({int? sessionId}) {
+    if (sessionId != null && sessionId != _drawSessionId) {
+      return;
+    }
+    _rollingTimer?.cancel();
+    _rollingTimer = null;
   }
 
-  void _finalizeDraw() async {
-    if (_selectedPool == null) return;
+  void _stopDraw() {
+    if (!_isRoundActive) return;
+    unawaited(_finalizeDraw());
+  }
+
+  Future<void> _finalizeDraw({int? sessionId}) async {
+    final activeSessionId = sessionId ?? _drawSessionId;
+    if (_selectedPool == null ||
+        !_isRoundActive ||
+        _isFinalizingDraw ||
+        activeSessionId != _drawSessionId) {
+      return;
+    }
+
+    _isFinalizingDraw = true;
+    _autoFinalizeTimer?.cancel();
+    _autoFinalizeTimer = null;
+    _stopRollingAnimation(sessionId: activeSessionId);
+
+    final pool = _selectedPool!;
 
     try {
-      final pool = _selectedPool!;
-
       final prizes = _lotteryService.drawPrizes(_prizes, _drawCount, pool);
+      final drawTime = DateTime.now();
       final records = prizes
+          .asMap()
+          .entries
           .map(
-            (prize) => LotteryRecord(
-              id: DateTime.now().millisecondsSinceEpoch.toString(),
+            (entry) => LotteryRecord(
+              id: '${drawTime.microsecondsSinceEpoch}_${activeSessionId}_${entry.key}',
               poolName: pool.name,
-              prizeName: prize.name,
-              drawTime: DateTime.now(),
+              prizeName: entry.value.name,
+              drawTime: drawTime,
               drawCount: 1,
             ),
           )
           .toList();
-
-      for (var record in records) {
-        await _lotteryService.saveLotteryRecord(record);
-      }
 
       if (mounted) {
         setState(() {
           _displayedRecords = records;
           _isDrawing = false;
         });
+      } else {
+        _displayedRecords = records;
+        _isDrawing = false;
+      }
+
+      for (var record in records) {
+        await _lotteryService.saveLotteryRecord(record);
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isDrawing = false;
         });
+      } else {
+        _isDrawing = false;
       }
+    } finally {
+      if (mounted && activeSessionId == _drawSessionId) {
+        setState(() {
+          _isRoundActive = false;
+        });
+      } else {
+        _isRoundActive = false;
+      }
+      _isFinalizingDraw = false;
     }
   }
 
   void _resetDraw() {
-    if (_selectedPool == null) return;
+    if (_selectedPool == null || _isRoundActive) return;
 
     _lotteryService.resetDrawnRecords(_selectedPool!.name);
 
@@ -230,6 +327,8 @@ class _LotteryScreenState extends State<LotteryScreen> {
   }
 
   void _openSlidePanel() {
+    final animationMode = context.read<AppProvider>().lotteryAnimationMode;
+
     SlidePanelOverlay.show(
       context: context,
       child: LotteryControlPanel(
@@ -240,20 +339,13 @@ class _LotteryScreenState extends State<LotteryScreen> {
         drawCount: _drawCount,
         totalPrizeCount: _totalPrizeCount,
         remainingPrizeCount: _remainingPrizeCount,
+        animationMode: animationMode,
         isDrawing: _isDrawing,
-        onPoolChanged: (pool) async {
-          setState(() {
-            _selectedPool = pool;
-            _displayedRecords = [];
-          });
-          await _loadPrizes();
-        },
-        onDrawCountChanged: (count) {
-          setState(() {
-            _drawCount = count;
-          });
-        },
+        controlsLocked: _isRoundActive,
+        onPoolChanged: _handlePoolChanged,
+        onDrawCountChanged: _handleDrawCountChanged,
         onStartDraw: _startDraw,
+        onStopDraw: _stopDraw,
         onResetDraw: _resetDraw,
       ),
     );
@@ -379,6 +471,7 @@ class _LotteryScreenState extends State<LotteryScreen> {
   Widget _buildLotteryLargeLayout(double contentHeight) {
     const rightPanelReservedWidth = _kPanelWidth + _kPanelGap;
     final panelAvailableHeight = contentHeight - (_kPanelGap * 2);
+    final animationMode = context.watch<AppProvider>().lotteryAnimationMode;
 
     return Stack(
       key: const ValueKey('lottery_layout_large'),
@@ -410,20 +503,13 @@ class _LotteryScreenState extends State<LotteryScreen> {
               drawCount: _drawCount,
               totalPrizeCount: _totalPrizeCount,
               remainingPrizeCount: _remainingPrizeCount,
+              animationMode: animationMode,
               isDrawing: _isDrawing,
-              onPoolChanged: (pool) async {
-                setState(() {
-                  _selectedPool = pool;
-                  _displayedRecords = [];
-                });
-                await _loadPrizes();
-              },
-              onDrawCountChanged: (count) {
-                setState(() {
-                  _drawCount = count;
-                });
-              },
+              controlsLocked: _isRoundActive,
+              onPoolChanged: _handlePoolChanged,
+              onDrawCountChanged: _handleDrawCountChanged,
               onStartDraw: _startDraw,
+              onStopDraw: _stopDraw,
               onResetDraw: _resetDraw,
             ),
           ),
@@ -433,6 +519,8 @@ class _LotteryScreenState extends State<LotteryScreen> {
   }
 
   Widget _buildLotteryPortraitLayout() {
+    final animationMode = context.watch<AppProvider>().lotteryAnimationMode;
+
     return Column(
       key: const ValueKey('lottery_layout_portrait'),
       children: [
@@ -466,20 +554,13 @@ class _LotteryScreenState extends State<LotteryScreen> {
               drawCount: _drawCount,
               totalPrizeCount: _totalPrizeCount,
               remainingPrizeCount: _remainingPrizeCount,
+              animationMode: animationMode,
               isDrawing: _isDrawing,
-              onPoolChanged: (pool) async {
-                setState(() {
-                  _selectedPool = pool;
-                  _displayedRecords = [];
-                });
-                await _loadPrizes();
-              },
-              onDrawCountChanged: (count) {
-                setState(() {
-                  _drawCount = count;
-                });
-              },
+              controlsLocked: _isRoundActive,
+              onPoolChanged: _handlePoolChanged,
+              onDrawCountChanged: _handleDrawCountChanged,
               onStartDraw: _startDraw,
+              onStopDraw: _stopDraw,
               onResetDraw: _resetDraw,
             ),
           ),
@@ -490,6 +571,7 @@ class _LotteryScreenState extends State<LotteryScreen> {
 
   Widget _buildLotteryShortLayout(double contentHeight) {
     final panelAvailableHeight = contentHeight;
+    final animationMode = context.watch<AppProvider>().lotteryAnimationMode;
 
     return Padding(
       key: const ValueKey('lottery_layout_short'),
@@ -518,20 +600,13 @@ class _LotteryScreenState extends State<LotteryScreen> {
               drawCount: _drawCount,
               totalPrizeCount: _totalPrizeCount,
               remainingPrizeCount: _remainingPrizeCount,
+              animationMode: animationMode,
               isDrawing: _isDrawing,
-              onPoolChanged: (pool) async {
-                setState(() {
-                  _selectedPool = pool;
-                  _displayedRecords = [];
-                });
-                await _loadPrizes();
-              },
-              onDrawCountChanged: (count) {
-                setState(() {
-                  _drawCount = count;
-                });
-              },
+              controlsLocked: _isRoundActive,
+              onPoolChanged: _handlePoolChanged,
+              onDrawCountChanged: _handleDrawCountChanged,
               onStartDraw: _startDraw,
+              onStopDraw: _stopDraw,
               onResetDraw: _resetDraw,
             ),
           ),
@@ -703,11 +778,20 @@ class LotteryControlPanel extends StatelessWidget {
   final int drawCount;
   final int totalPrizeCount;
   final int remainingPrizeCount;
+  final AnimationMode animationMode;
   final bool isDrawing;
+  final bool controlsLocked;
   final ValueChanged<PrizePool?> onPoolChanged;
   final ValueChanged<int> onDrawCountChanged;
   final VoidCallback onStartDraw;
+  final VoidCallback onStopDraw;
   final VoidCallback onResetDraw;
+
+  static const startButtonKey = ValueKey('lottery_start_button');
+  static const resetButtonKey = ValueKey('lottery_reset_button');
+  static const decrementDrawCountKey = ValueKey('lottery_draw_count_decrement');
+  static const incrementDrawCountKey = ValueKey('lottery_draw_count_increment');
+  static const poolDropdownKey = ValueKey('lottery_pool_dropdown');
 
   const LotteryControlPanel({
     super.key,
@@ -719,10 +803,13 @@ class LotteryControlPanel extends StatelessWidget {
     required this.drawCount,
     required this.totalPrizeCount,
     required this.remainingPrizeCount,
+    required this.animationMode,
     this.isDrawing = false,
+    this.controlsLocked = false,
     required this.onPoolChanged,
     required this.onDrawCountChanged,
     required this.onStartDraw,
+    required this.onStopDraw,
     required this.onResetDraw,
   });
 
@@ -796,6 +883,30 @@ class LotteryControlPanel extends StatelessWidget {
     );
   }
 
+  bool _canManuallyStop() {
+    return isDrawing && animationMode == AnimationMode.manualStop;
+  }
+
+  String _startButtonLabel() {
+    if (_canManuallyStop()) {
+      return '停止';
+    }
+    if (isDrawing) {
+      return '抽奖中...';
+    }
+    return '开始';
+  }
+
+  VoidCallback? _startButtonHandler() {
+    if (_canManuallyStop()) {
+      return onStopDraw;
+    }
+    if (controlsLocked) {
+      return null;
+    }
+    return onStartDraw;
+  }
+
   Widget _buildLayout(
     BuildContext context,
     LotteryControlPanelLayoutMode resolvedMode, {
@@ -821,7 +932,8 @@ class LotteryControlPanel extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             IconButton.filledTonal(
-              onPressed: drawCount > 1
+              key: decrementDrawCountKey,
+              onPressed: !controlsLocked && drawCount > 1
                   ? () => onDrawCountChanged(drawCount - 1)
                   : null,
               icon: const Icon(Icons.remove),
@@ -838,7 +950,8 @@ class LotteryControlPanel extends StatelessWidget {
               ),
             ),
             IconButton.filledTonal(
-              onPressed: drawCount < maxCount
+              key: incrementDrawCountKey,
+              onPressed: !controlsLocked && drawCount < maxCount
                   ? () => onDrawCountChanged(drawCount + 1)
                   : null,
               icon: const Icon(Icons.add),
@@ -850,7 +963,8 @@ class LotteryControlPanel extends StatelessWidget {
         SizedBox(
           height: 56,
           child: FilledButton(
-            onPressed: isDrawing ? null : onStartDraw,
+            key: startButtonKey,
+            onPressed: _startButtonHandler(),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF66CCFF),
               foregroundColor: Colors.white,
@@ -862,13 +976,14 @@ class LotteryControlPanel extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: Text(isDrawing ? '抽奖中...' : '开始'),
+            child: Text(_startButtonLabel()),
           ),
         ),
         const SizedBox(height: 12),
 
         OutlinedButton.icon(
-          onPressed: onResetDraw,
+          key: resetButtonKey,
+          onPressed: controlsLocked ? null : onResetDraw,
           icon: const Icon(Icons.refresh, size: 18),
           label: const Text('重置'),
           style: OutlinedButton.styleFrom(
@@ -882,7 +997,8 @@ class LotteryControlPanel extends StatelessWidget {
         const SizedBox(height: 20),
 
         DropdownButtonFormField<PrizePool>(
-          value: selectedPool,
+          key: poolDropdownKey,
+          initialValue: selectedPool,
           isExpanded: true,
           decoration: InputDecoration(
             labelText: '奖池',
@@ -898,7 +1014,7 @@ class LotteryControlPanel extends StatelessWidget {
               child: Text(pool.name, overflow: TextOverflow.ellipsis),
             );
           }).toList(),
-          onChanged: onPoolChanged,
+          onChanged: controlsLocked ? null : onPoolChanged,
         ),
         const SizedBox(height: 12),
         const Divider(height: 1),
@@ -930,7 +1046,8 @@ class LotteryControlPanel extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             IconButton.filledTonal(
-              onPressed: drawCount > 1
+              key: decrementDrawCountKey,
+              onPressed: !controlsLocked && drawCount > 1
                   ? () => onDrawCountChanged(drawCount - 1)
                   : null,
               icon: const Icon(Icons.remove, size: 20),
@@ -949,7 +1066,8 @@ class LotteryControlPanel extends StatelessWidget {
               ),
             ),
             IconButton.filledTonal(
-              onPressed: drawCount < maxCount
+              key: incrementDrawCountKey,
+              onPressed: !controlsLocked && drawCount < maxCount
                   ? () => onDrawCountChanged(drawCount + 1)
                   : null,
               icon: const Icon(Icons.add, size: 20),
@@ -963,7 +1081,8 @@ class LotteryControlPanel extends StatelessWidget {
         SizedBox(
           height: 44,
           child: FilledButton(
-            onPressed: isDrawing ? null : onStartDraw,
+            key: startButtonKey,
+            onPressed: _startButtonHandler(),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF66CCFF),
               foregroundColor: Colors.white,
@@ -975,13 +1094,14 @@ class LotteryControlPanel extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: Text(isDrawing ? '抽奖中...' : '开始'),
+            child: Text(_startButtonLabel()),
           ),
         ),
         SizedBox(height: fillHeight ? 0 : 8),
 
         OutlinedButton.icon(
-          onPressed: onResetDraw,
+          key: resetButtonKey,
+          onPressed: controlsLocked ? null : onResetDraw,
           icon: const Icon(Icons.refresh, size: 16),
           label: const Text('重置'),
           style: OutlinedButton.styleFrom(
@@ -995,7 +1115,8 @@ class LotteryControlPanel extends StatelessWidget {
         SizedBox(height: fillHeight ? 0 : 12),
 
         DropdownButtonFormField<PrizePool>(
-          value: selectedPool,
+          key: poolDropdownKey,
+          initialValue: selectedPool,
           isExpanded: true,
           decoration: InputDecoration(
             labelText: '奖池',
@@ -1012,7 +1133,7 @@ class LotteryControlPanel extends StatelessWidget {
               child: Text(pool.name, overflow: TextOverflow.ellipsis),
             );
           }).toList(),
-          onChanged: onPoolChanged,
+          onChanged: controlsLocked ? null : onPoolChanged,
         ),
         SizedBox(height: fillHeight ? 0 : 8),
         const Divider(height: 1),
@@ -1042,7 +1163,8 @@ class LotteryControlPanel extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               IconButton.filledTonal(
-                onPressed: drawCount > 1
+                key: decrementDrawCountKey,
+                onPressed: !controlsLocked && drawCount > 1
                     ? () => onDrawCountChanged(drawCount - 1)
                     : null,
                 icon: const Icon(Icons.remove, size: 18),
@@ -1064,7 +1186,8 @@ class LotteryControlPanel extends StatelessWidget {
                 ),
               ),
               IconButton.filledTonal(
-                onPressed: drawCount < maxCount
+                key: incrementDrawCountKey,
+                onPressed: !controlsLocked && drawCount < maxCount
                     ? () => onDrawCountChanged(drawCount + 1)
                     : null,
                 icon: const Icon(Icons.add, size: 18),
@@ -1078,7 +1201,8 @@ class LotteryControlPanel extends StatelessWidget {
           SizedBox(
             height: 40,
             child: FilledButton(
-              onPressed: isDrawing ? null : onStartDraw,
+              key: startButtonKey,
+              onPressed: _startButtonHandler(),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF66CCFF),
                 foregroundColor: Colors.white,
@@ -1091,13 +1215,14 @@ class LotteryControlPanel extends StatelessWidget {
                 ),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
               ),
-              child: Text(isDrawing ? '抽奖中...' : '开始'),
+              child: Text(_startButtonLabel()),
             ),
           ),
           const SizedBox(height: 6),
 
           OutlinedButton.icon(
-            onPressed: onResetDraw,
+            key: resetButtonKey,
+            onPressed: controlsLocked ? null : onResetDraw,
             icon: const Icon(Icons.refresh, size: 14),
             label: const Text('重置'),
             style: OutlinedButton.styleFrom(
@@ -1111,7 +1236,8 @@ class LotteryControlPanel extends StatelessWidget {
           const SizedBox(height: 8),
 
           DropdownButtonFormField<PrizePool>(
-            value: selectedPool,
+            key: poolDropdownKey,
+            initialValue: selectedPool,
             isExpanded: true,
             decoration: InputDecoration(
               labelText: '奖池',
@@ -1135,7 +1261,7 @@ class LotteryControlPanel extends StatelessWidget {
                 ),
               );
             }).toList(),
-            onChanged: onPoolChanged,
+            onChanged: controlsLocked ? null : onPoolChanged,
           ),
 
           const SizedBox(height: 6),

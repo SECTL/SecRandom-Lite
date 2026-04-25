@@ -14,6 +14,7 @@ class DataService {
   static const String _studentsFileName = 'students.json';
   static const String _historyFileName = 'history.json';
   static const String _configFileName = 'config.json';
+  static const String _configLockFileName = 'config.lock';
   static const String _rootKey = 'class_name';
   static const String _configRootKey = 'config';
 
@@ -83,12 +84,29 @@ class DataService {
     return File(path.join(dirPath, _historyFileName));
   }
 
-  Future<File> _getConfigFile() async {
+  String _encodeConfig(AppConfig config) {
+    final Map<String, dynamic> dataMap = {
+      _configRootKey: config.toJson(),
+    };
+    return const JsonEncoder.withIndent('  ').convert(dataMap);
+  }
+
+  Future<T> _withConfigFileLock<T>(Future<T> Function(String dirPath) action) async {
     final dirPath = await _getDataDirPath();
     if (dirPath == null) {
       throw UnsupportedError('File system not available on web platform');
     }
-    return File(path.join(dirPath, _configFileName));
+
+    final lockFile = File(path.join(dirPath, _configLockFileName));
+    final lockHandle = await lockFile.open(mode: FileMode.writeOnlyAppend);
+
+    try {
+      await lockHandle.lock(FileLock.exclusive);
+      return await action(dirPath);
+    } finally {
+      await lockHandle.unlock();
+      await lockHandle.close();
+    }
   }
 
   Future<void> saveStudents(List<Student> students) async {
@@ -476,16 +494,13 @@ class DataService {
   Future<void> saveConfig(AppConfig config) async {
     try {
       if (!_isWeb) {
-        final file = await _getConfigFile();
-        final Map<String, dynamic> dataMap = {
-          _configRootKey: config.toJson(),
-        };
-        await file.writeAsString(const JsonEncoder.withIndent('  ').convert(dataMap));
+        final encodedConfig = _encodeConfig(config);
+        await _withConfigFileLock((dirPath) async {
+          final file = File(path.join(dirPath, _configFileName));
+          await file.writeAsString(encodedConfig);
+        });
       } else {
-        final Map<String, dynamic> dataMap = {
-          _configRootKey: config.toJson(),
-        };
-        final String jsonData = const JsonEncoder.withIndent('  ').convert(dataMap);
+        final String jsonData = _encodeConfig(config);
         
         if (jsonData.length > 1000000) {
           print('Warning: Config data is large (${jsonData.length} chars), may cause performance issues');
@@ -502,21 +517,24 @@ class DataService {
   Future<AppConfig> loadConfig() async {
     try {
       if (!_isWeb) {
-        final file = await _getConfigFile();
-        if (!await file.exists()) {
-          final defaultConfig = AppConfig.defaultConfig();
-          await saveConfig(defaultConfig);
-          return defaultConfig;
-        }
-        final String data = await file.readAsString();
-        if (data.isEmpty) return AppConfig.defaultConfig();
+        return await _withConfigFileLock((dirPath) async {
+          final file = File(path.join(dirPath, _configFileName));
+          if (!await file.exists()) {
+            final defaultConfig = AppConfig.defaultConfig();
+            await file.writeAsString(_encodeConfig(defaultConfig));
+            return defaultConfig;
+          }
 
-        final Map<String, dynamic> jsonMap = json.decode(data);
-        if (jsonMap.containsKey(_configRootKey)) {
-          return AppConfig.fromJson(jsonMap[_configRootKey]);
-        }
+          final String data = await file.readAsString();
+          if (data.isEmpty) return AppConfig.defaultConfig();
 
-        return AppConfig.defaultConfig();
+          final Map<String, dynamic> jsonMap = json.decode(data);
+          if (jsonMap.containsKey(_configRootKey)) {
+            return AppConfig.fromJson(jsonMap[_configRootKey]);
+          }
+
+          return AppConfig.defaultConfig();
+        });
       } else {
         final String? jsonData = _getWebStorage(_configFileName);
         if (jsonData == null || jsonData.isEmpty) {

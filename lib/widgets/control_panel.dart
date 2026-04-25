@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/app_config.dart';
 import '../providers/app_provider.dart';
 
 enum ControlPanelLayoutMode {
@@ -21,6 +22,13 @@ class ControlPanel extends StatelessWidget {
   final ControlPanelLayoutMode layoutMode;
   final double? availableHeight;
   final bool fillHeight;
+
+  static const startButtonKey = ValueKey('rollcall_start_button');
+  static const decrementSelectCountKey = ValueKey('rollcall_select_count_decrement');
+  static const incrementSelectCountKey = ValueKey('rollcall_select_count_increment');
+  static const classDropdownKey = ValueKey('rollcall_class_dropdown');
+  static const groupDropdownKey = ValueKey('rollcall_group_dropdown');
+  static const genderDropdownKey = ValueKey('rollcall_gender_dropdown');
 
   @override
   Widget build(BuildContext context) {
@@ -164,8 +172,42 @@ class ControlPanel extends StatelessWidget {
     ];
   }
 
+  bool _isRoundActive(AppProvider appProvider) => appProvider.isRolling;
+
+  bool _candidateControlsLocked(AppProvider appProvider) => _isRoundActive(appProvider);
+
+  bool _canManuallyStop(AppProvider appProvider) {
+    return _isRoundActive(appProvider) &&
+        appProvider.rollcallAnimationMode == AnimationMode.manualStop;
+  }
+
+  String _startButtonLabel(AppProvider appProvider) {
+    if (_canManuallyStop(appProvider)) {
+      return '停止';
+    }
+    if (_isRoundActive(appProvider)) {
+      return '点名中...';
+    }
+    return '开始';
+  }
+
+  VoidCallback? _startButtonHandler(AppProvider appProvider) {
+    if (_canManuallyStop(appProvider)) {
+      return () {
+        appProvider.stopRollCall();
+      };
+    }
+    if (_isRoundActive(appProvider)) {
+      return null;
+    }
+    return () {
+      appProvider.startRollCall();
+    };
+  }
+
   Widget _buildNormalLayout(BuildContext context, AppProvider appProvider) {
     final maxCount = appProvider.totalCount;
+    final controlsLocked = _candidateControlsLocked(appProvider);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -176,7 +218,10 @@ class ControlPanel extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             IconButton.filledTonal(
-              onPressed: appProvider.selectCount > 1 ? () => appProvider.setSelectCount(appProvider.selectCount - 1) : null,
+              key: decrementSelectCountKey,
+              onPressed: !controlsLocked && appProvider.selectCount > 1
+                  ? () => appProvider.setSelectCount(appProvider.selectCount - 1)
+                  : null,
               icon: const Icon(Icons.remove),
             ),
             Container(
@@ -191,7 +236,10 @@ class ControlPanel extends StatelessWidget {
               ),
             ),
             IconButton.filledTonal(
-              onPressed: appProvider.selectCount < maxCount ? () => appProvider.setSelectCount(appProvider.selectCount + 1) : null,
+              key: incrementSelectCountKey,
+              onPressed: !controlsLocked && appProvider.selectCount < maxCount
+                  ? () => appProvider.setSelectCount(appProvider.selectCount + 1)
+                  : null,
               icon: const Icon(Icons.add),
             ),
           ],
@@ -202,7 +250,8 @@ class ControlPanel extends StatelessWidget {
         SizedBox(
           height: 56,
           child: FilledButton(
-            onPressed: appProvider.isRolling ? null : () => appProvider.startRollCall(),
+            key: startButtonKey,
+            onPressed: _startButtonHandler(appProvider),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF66CCFF),
               foregroundColor: Colors.white,
@@ -211,13 +260,14 @@ class ControlPanel extends StatelessWidget {
                 borderRadius: BorderRadius.circular(12),
               ),
             ),
-            child: Text(appProvider.isRolling ? '点名中...' : '开始'),
+            child: Text(_startButtonLabel(appProvider)),
           ),
         ),
         const SizedBox(height: 20),
 
         // 班级下拉菜单
         DropdownButtonFormField<String>(
+          key: classDropdownKey,
           value: appProvider.selectedClass,
           decoration: InputDecoration(
             labelText: '班级',
@@ -227,12 +277,15 @@ class ControlPanel extends StatelessWidget {
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           ),
           items: _buildClassItems(appProvider),
-          onChanged: (value) => appProvider.setSelectedClass(value),
+          onChanged: controlsLocked
+              ? null
+              : (value) => appProvider.setSelectedClass(value),
         ),
         const SizedBox(height: 16),
 
         // 小组筛选
         DropdownButtonFormField<String>(
+          key: groupDropdownKey,
           value: appProvider.selectedGroup,
           decoration: InputDecoration(
             labelText: '小组',
@@ -242,12 +295,15 @@ class ControlPanel extends StatelessWidget {
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           ),
           items: _buildGroupItems(appProvider),
-          onChanged: (value) => appProvider.setSelectedGroup(value),
+          onChanged: controlsLocked
+              ? null
+              : (value) => appProvider.setSelectedGroup(value),
         ),
         const SizedBox(height: 16),
 
         // 性别筛选
         DropdownButtonFormField<String>(
+          key: genderDropdownKey,
           value: appProvider.selectedGender,
           decoration: InputDecoration(
             labelText: '性别',
@@ -257,7 +313,9 @@ class ControlPanel extends StatelessWidget {
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           ),
           items: _buildGenderItems(),
-          onChanged: (value) => appProvider.setSelectedGender(value),
+          onChanged: controlsLocked
+              ? null
+              : (value) => appProvider.setSelectedGender(value),
         ),
 
         // 状态文本
@@ -281,6 +339,7 @@ class ControlPanel extends StatelessWidget {
     required bool fillHeight,
   }) {
     final maxCount = appProvider.totalCount;
+    final controlsLocked = _candidateControlsLocked(appProvider);
 
     return Column(
       mainAxisSize: fillHeight ? MainAxisSize.max : MainAxisSize.min,
@@ -292,7 +351,10 @@ class ControlPanel extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             IconButton.filledTonal(
-              onPressed: appProvider.selectCount > 1 ? () => appProvider.setSelectCount(appProvider.selectCount - 1) : null,
+              key: decrementSelectCountKey,
+              onPressed: !controlsLocked && appProvider.selectCount > 1
+                  ? () => appProvider.setSelectCount(appProvider.selectCount - 1)
+                  : null,
               icon: const Icon(Icons.remove, size: 20),
               padding: const EdgeInsets.all(6),
               constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -309,7 +371,10 @@ class ControlPanel extends StatelessWidget {
               ),
             ),
             IconButton.filledTonal(
-              onPressed: appProvider.selectCount < maxCount ? () => appProvider.setSelectCount(appProvider.selectCount + 1) : null,
+              key: incrementSelectCountKey,
+              onPressed: !controlsLocked && appProvider.selectCount < maxCount
+                  ? () => appProvider.setSelectCount(appProvider.selectCount + 1)
+                  : null,
               icon: const Icon(Icons.add, size: 20),
               padding: const EdgeInsets.all(6),
               constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -322,7 +387,8 @@ class ControlPanel extends StatelessWidget {
         SizedBox(
           height: 44,
           child: FilledButton(
-            onPressed: appProvider.isRolling ? null : () => appProvider.startRollCall(),
+            key: startButtonKey,
+            onPressed: _startButtonHandler(appProvider),
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF66CCFF),
               foregroundColor: Colors.white,
@@ -331,13 +397,14 @@ class ControlPanel extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: Text(appProvider.isRolling ? '点名中...' : '开始'),
+            child: Text(_startButtonLabel(appProvider)),
           ),
         ),
         SizedBox(height: fillHeight ? 0 : 12),
 
         // 班级下拉菜单
         DropdownButtonFormField<String>(
+          key: classDropdownKey,
           value: appProvider.selectedClass,
           decoration: InputDecoration(
             labelText: '班级',
@@ -356,7 +423,9 @@ class ControlPanel extends StatelessWidget {
               ),
             );
           }).toList(),
-          onChanged: (value) => appProvider.setSelectedClass(value),
+          onChanged: controlsLocked
+              ? null
+              : (value) => appProvider.setSelectedClass(value),
         ),
         SizedBox(height: fillHeight ? 0 : 12),
 
@@ -364,6 +433,7 @@ class ControlPanel extends StatelessWidget {
           children: [
             Expanded(
               child: DropdownButtonFormField<String>(
+                key: groupDropdownKey,
                 value: appProvider.selectedGroup,
                 isExpanded: true,
                 decoration: InputDecoration(
@@ -385,13 +455,16 @@ class ControlPanel extends StatelessWidget {
                     ),
                   );
                 }).toList(),
-                onChanged: (value) => appProvider.setSelectedGroup(value),
+                onChanged: controlsLocked
+                    ? null
+                    : (value) => appProvider.setSelectedGroup(value),
               ),
             ),
             const SizedBox(width: 8),
 
             Expanded(
               child: DropdownButtonFormField<String>(
+                key: genderDropdownKey,
                 value: appProvider.selectedGender,
                 isExpanded: true,
                 decoration: InputDecoration(
@@ -413,7 +486,9 @@ class ControlPanel extends StatelessWidget {
                     ),
                   );
                 }).toList(),
-                onChanged: (value) => appProvider.setSelectedGender(value),
+                onChanged: controlsLocked
+                    ? null
+                    : (value) => appProvider.setSelectedGender(value),
               ),
             ),
           ],
@@ -436,6 +511,7 @@ class ControlPanel extends StatelessWidget {
 
   Widget _buildUltraCompactLayout(BuildContext context, AppProvider appProvider) {
     final maxCount = appProvider.totalCount;
+    final controlsLocked = _candidateControlsLocked(appProvider);
 
     return Padding(
       padding: const EdgeInsets.all(8.0),
@@ -449,7 +525,10 @@ class ControlPanel extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               IconButton.filledTonal(
-                onPressed: appProvider.selectCount > 1 ? () => appProvider.setSelectCount(appProvider.selectCount - 1) : null,
+                key: decrementSelectCountKey,
+                onPressed: !controlsLocked && appProvider.selectCount > 1
+                    ? () => appProvider.setSelectCount(appProvider.selectCount - 1)
+                    : null,
                 icon: const Icon(Icons.remove, size: 16),
                 padding: const EdgeInsets.all(4),
                 constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
@@ -466,7 +545,10 @@ class ControlPanel extends StatelessWidget {
                 ),
               ),
               IconButton.filledTonal(
-                onPressed: appProvider.selectCount < maxCount ? () => appProvider.setSelectCount(appProvider.selectCount + 1) : null,
+                key: incrementSelectCountKey,
+                onPressed: !controlsLocked && appProvider.selectCount < maxCount
+                    ? () => appProvider.setSelectCount(appProvider.selectCount + 1)
+                    : null,
                 icon: const Icon(Icons.add, size: 16),
                 padding: const EdgeInsets.all(4),
                 constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
@@ -478,7 +560,8 @@ class ControlPanel extends StatelessWidget {
           SizedBox(
             height: 32,
             child: FilledButton(
-              onPressed: appProvider.isRolling ? null : () => appProvider.startRollCall(),
+              key: startButtonKey,
+              onPressed: _startButtonHandler(appProvider),
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF66CCFF),
                 foregroundColor: Colors.white,
@@ -487,12 +570,13 @@ class ControlPanel extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                 ),
               ),
-              child: Text(appProvider.isRolling ? '点名中...' : '开始'),
+              child: Text(_startButtonLabel(appProvider)),
             ),
           ),
 
           // 班级下拉菜单
           DropdownButtonFormField<String>(
+            key: classDropdownKey,
             value: appProvider.selectedClass,
             decoration: InputDecoration(
               labelText: '班级',
@@ -512,7 +596,9 @@ class ControlPanel extends StatelessWidget {
                 ),
               );
             }).toList(),
-            onChanged: (value) => appProvider.setSelectedClass(value),
+            onChanged: controlsLocked
+                ? null
+                : (value) => appProvider.setSelectedClass(value),
           ),
 
           // 小组和性别选择在同一行
@@ -520,6 +606,7 @@ class ControlPanel extends StatelessWidget {
             children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
+                  key: groupDropdownKey,
                   value: appProvider.selectedGroup,
                   isExpanded: true,
                   decoration: InputDecoration(
@@ -540,13 +627,16 @@ class ControlPanel extends StatelessWidget {
                       ),
                     );
                   }).toList(),
-                  onChanged: (value) => appProvider.setSelectedGroup(value),
+                  onChanged: controlsLocked
+                      ? null
+                      : (value) => appProvider.setSelectedGroup(value),
                 ),
               ),
               const SizedBox(width: 6),
 
               Expanded(
                 child: DropdownButtonFormField<String>(
+                  key: genderDropdownKey,
                   value: appProvider.selectedGender,
                   isExpanded: true,
                   decoration: InputDecoration(
@@ -567,7 +657,9 @@ class ControlPanel extends StatelessWidget {
                       ),
                     );
                   }).toList(),
-                  onChanged: (value) => appProvider.setSelectedGender(value),
+                  onChanged: controlsLocked
+                      ? null
+                      : (value) => appProvider.setSelectedGender(value),
                 ),
               ),
             ],

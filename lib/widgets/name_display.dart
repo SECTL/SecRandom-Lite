@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/app_config.dart';
 import '../providers/app_provider.dart';
 import '../models/student.dart';
 
@@ -19,9 +20,18 @@ class _NameDisplayState extends State<NameDisplay> {
   List<Student> _displayedStudents = [];
   final Random _random = Random();
 
+  bool _shouldAnimate(AppProvider provider) {
+    return provider.isRolling &&
+        provider.rollcallAnimationMode != AnimationMode.none;
+  }
+
+  void _showFinalSelection(AppProvider provider) {
+    _displayedStudents = List<Student>.from(provider.currentSelection);
+  }
+
   @override
   void dispose() {
-    _timer?.cancel();
+    _stopRollingAnimation();
     super.dispose();
   }
 
@@ -30,11 +40,27 @@ class _NameDisplayState extends State<NameDisplay> {
 
     _timer = Timer.periodic(const Duration(milliseconds: 80), (timer) {
       if (!mounted) {
-        timer.cancel();
+        if (identical(_timer, timer)) {
+          _stopRollingAnimation();
+        } else {
+          timer.cancel();
+        }
         return;
       }
 
-      // 使用筛选后的学生列表，而不是所有学生
+      if (!_shouldAnimate(provider)) {
+        if (identical(_timer, timer)) {
+          _stopRollingAnimation();
+        } else {
+          timer.cancel();
+        }
+
+        setState(() {
+          _showFinalSelection(provider);
+        });
+        return;
+      }
+
       final filtered = provider.filteredStudents;
       if (filtered.isEmpty) return;
 
@@ -57,13 +83,11 @@ class _NameDisplayState extends State<NameDisplay> {
     final appProvider = Provider.of<AppProvider>(context);
     final double resultFontSize = appProvider.rollcallResultFontSize;
 
-    if (appProvider.isRolling) {
+    if (_shouldAnimate(appProvider)) {
       _startRollingAnimation(appProvider);
     } else {
       _stopRollingAnimation();
-      if (appProvider.currentSelection.isNotEmpty) {
-        _displayedStudents = appProvider.currentSelection;
-      }
+      _showFinalSelection(appProvider);
     }
 
     if (widget.isWideScreen) {
