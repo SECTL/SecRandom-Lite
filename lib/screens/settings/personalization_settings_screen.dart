@@ -13,41 +13,24 @@ class PersonalizationSettingsScreen extends StatelessWidget {
       body: Consumer<AppProvider>(
         builder: (context, appProvider, _) {
           return ListView(
+            padding: const EdgeInsets.all(16),
             children: [
-              ListTile(
-                leading: const Icon(Icons.person_search),
-                title: const Text('抽人结果字号'),
-                subtitle: Text(
-                  appProvider.rollcallResultFontSize.toStringAsFixed(0),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Slider(
+              _SettingsSectionCard(
+                title: '抽人设置',
+                icon: Icons.person_search,
+                child: _FontSizeSliderTile(
+                  label: '抽人结果字号',
                   value: appProvider.rollcallResultFontSize,
-                  min: 24,
-                  max: 72,
-                  divisions: 48,
-                  label: appProvider.rollcallResultFontSize.toStringAsFixed(0),
                   onChanged: appProvider.setRollcallResultFontSize,
                 ),
               ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.card_giftcard),
-                title: const Text('抽奖结果字号'),
-                subtitle: Text(
-                  appProvider.lotteryResultFontSize.toStringAsFixed(0),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Slider(
+              const SizedBox(height: 12),
+              _SettingsSectionCard(
+                title: '抽奖设置',
+                icon: Icons.card_giftcard,
+                child: _FontSizeSliderTile(
+                  label: '抽奖结果字号',
                   value: appProvider.lotteryResultFontSize,
-                  min: 24,
-                  max: 72,
-                  divisions: 48,
-                  label: appProvider.lotteryResultFontSize.toStringAsFixed(0),
                   onChanged: appProvider.setLotteryResultFontSize,
                 ),
               ),
@@ -55,6 +38,71 @@ class PersonalizationSettingsScreen extends StatelessWidget {
           );
         },
       ),
+    );
+  }
+}
+
+class _SettingsSectionCard extends StatelessWidget {
+  const _SettingsSectionCard({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
+
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 0),
+          leading: Icon(icon),
+          title: Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+        ),
+        child,
+        const Divider(height: 24),
+      ],
+    );
+  }
+}
+
+class _FontSizeSliderTile extends StatelessWidget {
+  const _FontSizeSliderTile({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final double value;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final displayValue = value.toStringAsFixed(0);
+
+    return Column(
+      children: [
+        ListTile(title: Text(label), trailing: Text(displayValue)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Slider(
+            value: value,
+            min: 24,
+            max: 72,
+            divisions: 48,
+            label: displayValue,
+            onChanged: onChanged,
+          ),
+        ),
+      ],
     );
   }
 }

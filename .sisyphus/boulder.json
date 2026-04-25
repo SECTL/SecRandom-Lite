@@ -1,0 +1,32 @@
+{
+  "active_plan": "J:\\git file\\SecRandom-lutter\\.sisyphus\\plans\\animation-modes-rollcall-lottery.md",
+  "started_at": "2026-04-25T07:59:42.985Z",
+  "session_ids": [
+    "ses_25c56248affe3rp7BzjsZT3a4c"
+  ],
+  "session_origins": {
+    "ses_25c56248affe3rp7BzjsZT3a4c": "direct"
+  },
+  "plan_name": "animation-modes-rollcall-lottery",
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "定义动画模式枚举与配置字段（双端独立）",
+      "session_id": "ses_23c570765ffesNlvFJPV30hwYX",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-25T08:09:20.408Z"
+    },
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "扩展 AppProvider 状态与 API（模式读写 + 轮次生命周期守卫）",
+      "session_id": "ses_23c4d7c91ffeKk46iATYpmYJRU",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-25T08:18:35.024Z"
+    }
+  }
+}

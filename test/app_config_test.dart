@@ -69,4 +69,45 @@ void main() {
       expect(json['lottery_result_font_size'], 44);
     });
   });
+
+  group('AppConfig animation mode', () {
+    test('fromJson should default animation modes to auto for old data', () {
+      final config = AppConfig.fromJson({
+        'theme_mode': 'system',
+        'select_count': 1,
+      });
+
+      expect(config.rollcallAnimationMode, AnimationMode.auto);
+      expect(config.lotteryAnimationMode, AnimationMode.auto);
+    });
+
+    test('fromJson should fall back to auto for invalid animation values', () {
+      final config = AppConfig.fromJson({
+        'theme_mode': 'system',
+        'select_count': 1,
+        'rollcall_animation_mode': 'invalid',
+        'lottery_animation_mode': '???',
+      });
+
+      expect(config.rollcallAnimationMode, AnimationMode.auto);
+      expect(config.lotteryAnimationMode, AnimationMode.auto);
+    });
+
+    test('toJson should persist all animation modes independently', () {
+      final config = AppConfig(
+        themeMode: 'dark',
+        rollcallAnimationMode: AnimationMode.auto,
+        lotteryAnimationMode: AnimationMode.manualStop,
+      );
+
+      final json = config.toJson();
+      expect(json['rollcall_animation_mode'], 'auto');
+      expect(json['lottery_animation_mode'], 'manualStop');
+      expect(json['rollcall_animation_mode'], isNot(json['lottery_animation_mode']));
+
+      final restored = AppConfig.fromJson(json);
+      expect(restored.rollcallAnimationMode, AnimationMode.auto);
+      expect(restored.lotteryAnimationMode, AnimationMode.manualStop);
+    });
+  });
 }

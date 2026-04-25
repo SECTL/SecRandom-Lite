@@ -8,6 +8,7 @@ class AboutSettingsScreen extends StatelessWidget {
   static const String _version = 'v0.0.10';
   static const String _repositoryUrl =
       'https://github.com/LeafS825/SecRandom-lutter';
+  static const String _authorGithubUrl = 'https://github.com/LeafS825';
 
   @override
   Widget build(BuildContext context) {
@@ -18,18 +19,16 @@ class AboutSettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 16),
         children: [
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  CircleAvatar(
+                  const CircleAvatar(
                     radius: 28,
-                    backgroundColor: colorScheme.primaryContainer,
-                    foregroundColor: colorScheme.onPrimaryContainer,
-                    child: const Icon(Icons.info_outline, size: 28),
+                    backgroundImage: AssetImage('assets/icon/app_icon.png'),
                   ),
                   const SizedBox(height: 16),
                   Text(
@@ -65,8 +64,8 @@ class AboutSettingsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          Card(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Column(
               children: [
                 ListTile(
@@ -77,16 +76,12 @@ class AboutSettingsScreen extends StatelessWidget {
                   onTap: _openRepository,
                 ),
                 const Divider(height: 1),
-                const ListTile(
-                  leading: Icon(Icons.person_outline),
-                  title: Text('项目作者'),
-                  subtitle: Text('LeafS825'),
-                ),
-                const Divider(height: 1),
-                const ListTile(
-                  leading: Icon(Icons.palette_outlined),
-                  title: Text('界面风格'),
-                  subtitle: Text('基于 Material 3 的简洁设置页设计'),
+                ListTile(
+                  leading: const Icon(Icons.person_outline),
+                  title: const Text('项目作者'),
+                  subtitle: const Text('LeafS825'),
+                  trailing: const Icon(Icons.open_in_new),
+                  onTap: _openAuthorGithub,
                 ),
               ],
             ),
@@ -109,6 +104,13 @@ class AboutSettingsScreen extends StatelessWidget {
 
   Future<void> _openRepository() async {
     final uri = Uri.parse(_repositoryUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _openAuthorGithub() async {
+    final uri = Uri.parse(_authorGithubUrl);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }

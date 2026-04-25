@@ -1,4 +1,18 @@
-﻿class AppConfig {
+enum AnimationMode { auto, manualStop, none }
+
+extension AnimationModeX on AnimationMode {
+  String toJsonValue() => name;
+
+  static AnimationMode fromJsonValue(dynamic value) {
+    final raw = value?.toString();
+    return AnimationMode.values.firstWhere(
+      (mode) => mode.name == raw,
+      orElse: () => AnimationMode.auto,
+    );
+  }
+}
+
+class AppConfig {
   final String themeMode; // 'system', 'light', 'dark'
   final int selectCount;
   final String? selectedClass;
@@ -9,6 +23,8 @@
   final bool nonRepeatEnabled;
   final double rollcallResultFontSize;
   final double lotteryResultFontSize;
+  final AnimationMode rollcallAnimationMode;
+  final AnimationMode lotteryAnimationMode;
 
   AppConfig({
     required this.themeMode,
@@ -20,6 +36,8 @@
     this.nonRepeatEnabled = true,
     this.rollcallResultFontSize = 48,
     this.lotteryResultFontSize = 48,
+    this.rollcallAnimationMode = AnimationMode.auto,
+    this.lotteryAnimationMode = AnimationMode.auto,
   });
 
   Map<String, dynamic> toJson() {
@@ -33,6 +51,8 @@
       'non_repeat_enabled': nonRepeatEnabled,
       'rollcall_result_font_size': rollcallResultFontSize,
       'lottery_result_font_size': lotteryResultFontSize,
+      'rollcall_animation_mode': rollcallAnimationMode.toJsonValue(),
+      'lottery_animation_mode': lotteryAnimationMode.toJsonValue(),
     };
   }
 
@@ -60,6 +80,10 @@
           (json['rollcall_result_font_size'] as num?)?.toDouble() ?? 48,
       lotteryResultFontSize:
           (json['lottery_result_font_size'] as num?)?.toDouble() ?? 48,
+      rollcallAnimationMode:
+          AnimationModeX.fromJsonValue(json['rollcall_animation_mode']),
+      lotteryAnimationMode:
+          AnimationModeX.fromJsonValue(json['lottery_animation_mode']),
     );
   }
 
@@ -75,6 +99,8 @@
       nonRepeatEnabled: true,
       rollcallResultFontSize: 48,
       lotteryResultFontSize: 48,
+      rollcallAnimationMode: AnimationMode.auto,
+      lotteryAnimationMode: AnimationMode.auto,
     );
   }
 }

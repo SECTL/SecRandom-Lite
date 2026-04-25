@@ -19,7 +19,12 @@ class AppProvider with ChangeNotifier {
   Map<String, List<String>> _classGroups = {};
 
   bool _isRolling = false;
+  bool _isDisposed = false;
+  bool _isFinalizingRollCall = false;
   ThemeMode _themeMode = ThemeMode.system;
+  AnimationMode _rollcallAnimationMode = AnimationMode.auto;
+  AnimationMode _lotteryAnimationMode = AnimationMode.auto;
+  int _rollCallSessionId = 0;
 
   int _selectCount = 1;
   bool _fairDrawEnabled = true;
@@ -34,6 +39,8 @@ class AppProvider with ChangeNotifier {
   List<Student> get currentSelection => _currentSelection;
   bool get isRolling => _isRolling;
   ThemeMode get themeMode => _themeMode;
+  AnimationMode get rollcallAnimationMode => _rollcallAnimationMode;
+  AnimationMode get lotteryAnimationMode => _lotteryAnimationMode;
   int get selectCount => _selectCount;
   int get remainingCount => _remainingStudents.length;
   int get totalCount => _filteredStudents().length;
@@ -63,6 +70,8 @@ class AppProvider with ChangeNotifier {
     _nonRepeatEnabled = config.nonRepeatEnabled;
     _rollcallResultFontSize = config.rollcallResultFontSize;
     _lotteryResultFontSize = config.lotteryResultFontSize;
+    _rollcallAnimationMode = config.rollcallAnimationMode;
+    _lotteryAnimationMode = config.lotteryAnimationMode;
     _selectedClass = config.selectedClass;
 
     final jsonClassNames = await _dataService.loadClassNames();
@@ -121,8 +130,16 @@ class AppProvider with ChangeNotifier {
       nonRepeatEnabled: _nonRepeatEnabled,
       rollcallResultFontSize: _rollcallResultFontSize,
       lotteryResultFontSize: _lotteryResultFontSize,
+      rollcallAnimationMode: _rollcallAnimationMode,
+      lotteryAnimationMode: _lotteryAnimationMode,
     );
     await _dataService.saveConfig(config);
+  }
+
+  void _notifyIfActive() {
+    if (!_isDisposed) {
+      notifyListeners();
+    }
   }
 
   List<String> getGroupsForClass(String? className) {
@@ -380,6 +397,18 @@ class AppProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  void setRollcallAnimationMode(AnimationMode mode) {
+    _rollcallAnimationMode = mode;
+    _saveConfig();
+    notifyListeners();
+  }
+
+  void setLotteryAnimationMode(AnimationMode mode) {
+    _lotteryAnimationMode = mode;
+    _saveConfig();
+    notifyListeners();
+  }
+
   void setSelectedClass(String? className) {
     _selectedClass = className;
     _selectedGroup = null;
@@ -624,16 +653,73 @@ class AppProvider with ChangeNotifier {
   Future<void> startRollCall() async {
     if (_isRolling) return;
 
+    _rollCallSessionId++;
+    final sessionId = _rollCallSessionId;
     _isRolling = true;
-    notifyListeners();
+    _notifyIfActive();
 
-    await Future.delayed(const Duration(seconds: 1));
-
-    if (_nonRepeatEnabled && _remainingStudents.length < _selectCount) {
-      _resetRemaining();
+    if (_rollcallAnimationMode == AnimationMode.none) {
+      await finalizeRollCall(sessionId: sessionId);
+      return;
     }
 
-    final className = _selectedClass ?? '1';
+    if (_rollcallAnimationMode == AnimationMode.manualStop) {
+      return;
+    }
+
+    await Future.delayed(const Duration(seconds: 1));
+    if (_isDisposed || sessionId != _rollCallSessionId) {
+      return;
+    }
+
+    await stopRollCall();
+  }
+
+  Future<void> stopRollCall() async {
+    if (!_isRolling || _isFinalizingRollCall) return;
+    await finalizeRollCall(sessionId: _rollCallSessionId);
+  }
+
+  Future<void> finalizeRollCall({int? sessionId}) async {
+    final activeSessionId = sessionId ?? _rollCallSessionId;
+    if (!_isRolling || _isFinalizingRollCall || activeSessionId != _rollCallSessionId) {
+      return;
+    }
+
+    _isFinalizingRollCall = true;
+
+    try {
+      if (_nonRepeatEnabled && _remainingStudents.length < _selectCount) {
+        _resetRemaining();
+      }
+
+      final className = _selectedClass ?? '1';
+      final picked = _pickRollCallStudents(className);
+      _currentSelection = picked;
+
+      if (_nonRepeatEnabled) {
+        for (final student in picked) {
+          _remainingStudents.removeWhere((remaining) => remaining.id == student.id);
+        }
+      }
+
+      final record = _buildRollCallRecord(className, picked);
+      _history.insert(0, record);
+      if (_history.length > 50) {
+        _history.removeLast();
+      }
+
+      await _dataService.addHistoryRecord(record);
+    } finally {
+      if (activeSessionId == _rollCallSessionId) {
+        _isRolling = false;
+      }
+      _isFinalizingRollCall = false;
+      _notifyIfActive();
+    }
+  }
+
+  List<Student> _pickRollCallStudents(String className) {
     final classHistory = _history
         .where((record) => record.className == className)
         .toList();
@@ -660,23 +746,19 @@ class AppProvider with ChangeNotifier {
         _selectCount,
       );
     }
-    _currentSelection = picked;
+    return picked;
+  }
 
-    if (_nonRepeatEnabled) {
-      for (final s in picked) {
-        _remainingStudents.removeWhere((r) => r.id == s.id);
-      }
-    }
-
+  HistoryRecord _buildRollCallRecord(String className, List<Student> picked) {
     final now = DateTime.now();
     final timeStr =
         "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} "
         "${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}";
 
     final newId = _history.isEmpty ? 1 : (_history.first.id + 1);
-    final nameStr = picked.map((s) => s.name).join(',');
+    final nameStr = picked.map((student) => student.name).join(',');
 
-    final record = HistoryRecord(
+    return HistoryRecord(
       id: newId,
       name: nameStr,
       drawMethod: _fairDrawEnabled ? 2 : 1,
@@ -686,16 +768,13 @@ class AppProvider with ChangeNotifier {
       drawGender: _selectedGender ?? '所有性别',
       className: className,
     );
+  }
 
-    _history.insert(0, record);
-    if (_history.length > 50) {
-      _history.removeLast();
-    }
-
-    await _dataService.addHistoryRecord(record);
-
-    _isRolling = false;
-    notifyListeners();
+  @override
+  void dispose() {
+    _isDisposed = true;
+    _rollCallSessionId++;
+    super.dispose();
   }
 }
 
