@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required for OAuth login loopback server -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="Secrandom Lite"
         android:name="${applicationName}"
