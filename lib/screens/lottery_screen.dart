@@ -49,6 +49,7 @@ class _LotteryScreenState extends State<LotteryScreen> {
   final GlobalKey _lotteryPortraitPanelKey = GlobalKey();
 
   ResponsiveScreenState _lotteryState = ResponsiveScreenState.large;
+  bool _isMeasuringLayout = true;
   bool _lotteryMeasurePending = false;
   DateTime? _lotteryLastMeasureAt;
   DateTime? _lotteryLastStateSwitchAt;
@@ -355,14 +356,15 @@ class _LotteryScreenState extends State<LotteryScreen> {
     final now = DateTime.now();
     final widthChanged = (contentSize.width - _lotteryLastWidth).abs() > 0.5;
     final heightChanged = (contentSize.height - _lotteryLastHeight).abs() > 0.5;
-    if (!widthChanged && !heightChanged) {
+    if (!widthChanged && !heightChanged && !_isMeasuringLayout) {
       return;
     }
     if (_lotteryMeasurePending) {
       return;
     }
     if (_lotteryLastMeasureAt != null &&
-        now.difference(_lotteryLastMeasureAt!) < _kResizeDebounce) {
+        now.difference(_lotteryLastMeasureAt!) < _kResizeDebounce &&
+        !_isMeasuringLayout) {
       return;
     }
 
@@ -406,16 +408,18 @@ class _LotteryScreenState extends State<LotteryScreen> {
         epsilon: _kSafeEpsilon,
       );
 
-      if (nextState != _lotteryState) {
+      if (nextState != _lotteryState || _isMeasuringLayout) {
         final switchNow = DateTime.now();
         if (_lotteryLastStateSwitchAt != null &&
             switchNow.difference(_lotteryLastStateSwitchAt!) <
-                _kStateSwitchMinInterval) {
+                _kStateSwitchMinInterval &&
+            !_isMeasuringLayout) {
           return;
         }
         _lotteryLastStateSwitchAt = switchNow;
         setState(() {
           _lotteryState = nextState;
+          _isMeasuringLayout = false;
         });
       }
     });
@@ -620,6 +624,23 @@ class _LotteryScreenState extends State<LotteryScreen> {
       builder: (context, constraints) {
         final contentSize = Size(constraints.maxWidth, constraints.maxHeight);
         _scheduleLotteryStateMeasurement(contentSize);
+
+        if (_isMeasuringLayout) {
+          return Container(
+            key: _lotteryContentKey,
+            color: Theme.of(context).colorScheme.surfaceContainer,
+            child: Stack(
+              children: [
+                Offstage(
+                  child: _buildLotteryLargeLayout(contentSize.height),
+                ),
+                Offstage(
+                  child: _buildLotteryPortraitLayout(),
+                ),
+              ],
+            ),
+          );
+        }
 
         Widget child;
         switch (_lotteryState) {
@@ -1306,7 +1327,7 @@ class _AutoFitLotteryControlPanelState
 
   LotteryControlPanelLayoutMode _resolvedMode =
       LotteryControlPanelLayoutMode.normal;
-  bool _pendingMeasurement = false;
+  bool _isMeasuring = true;
   double _lastWidth = -1;
   double _lastAvailableHeight = -1;
 
@@ -1314,59 +1335,63 @@ class _AutoFitLotteryControlPanelState
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        _scheduleMeasurementIfNeeded(constraints.maxWidth);
-        return Stack(
-          children: [
-            Offstage(
-              child: widget.panel._buildCard(
-                context,
-                LotteryControlPanelLayoutMode.normal,
-                fillHeight: false,
-                measureKey: _normalKey,
+        final shouldMeasure = _shouldMeasure(constraints.maxWidth);
+        
+        if (_isMeasuring || shouldMeasure) {
+          _startMeasurement(constraints.maxWidth);
+          return Stack(
+            children: [
+              Offstage(
+                child: widget.panel._buildCard(
+                  context,
+                  LotteryControlPanelLayoutMode.normal,
+                  fillHeight: false,
+                  measureKey: _normalKey,
+                ),
               ),
-            ),
-            Offstage(
-              child: widget.panel._buildCard(
-                context,
-                LotteryControlPanelLayoutMode.compact,
-                fillHeight: false,
-                measureKey: _compactKey,
+              Offstage(
+                child: widget.panel._buildCard(
+                  context,
+                  LotteryControlPanelLayoutMode.compact,
+                  fillHeight: false,
+                  measureKey: _compactKey,
+                ),
               ),
-            ),
-            Offstage(
-              child: widget.panel._buildCard(
-                context,
-                LotteryControlPanelLayoutMode.ultraCompact,
-                fillHeight: false,
-                measureKey: _ultraKey,
+              Offstage(
+                child: widget.panel._buildCard(
+                  context,
+                  LotteryControlPanelLayoutMode.ultraCompact,
+                  fillHeight: false,
+                  measureKey: _ultraKey,
+                ),
               ),
-            ),
-            widget.panel._buildCard(
-              context,
-              _resolvedMode,
-              fillHeight: widget.fillHeight,
-            ),
-          ],
+            ],
+          );
+        }
+        
+        return widget.panel._buildCard(
+          context,
+          _resolvedMode,
+          fillHeight: widget.fillHeight,
         );
       },
     );
   }
 
-  void _scheduleMeasurementIfNeeded(double width) {
+  bool _shouldMeasure(double width) {
     final widthChanged = (width - _lastWidth).abs() > 0.5;
     final heightChanged =
         (widget.availableHeight - _lastAvailableHeight).abs() > 0.5;
-    if (_pendingMeasurement || (!widthChanged && !heightChanged)) {
-      return;
-    }
+    return widthChanged || heightChanged;
+  }
+
+  void _startMeasurement(double width) {
     _lastWidth = width;
     _lastAvailableHeight = widget.availableHeight;
-    _pendingMeasurement = true;
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _pendingMeasurement = false;
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
+      
       final normalHeight = _readHeight(_normalKey);
       final compactHeight = _readHeight(_compactKey);
       final ultraHeight = _readHeight(_ultraKey);
@@ -1376,9 +1401,11 @@ class _AutoFitLotteryControlPanelState
         ultraHeight,
         widget.availableHeight,
       );
-      if (nextMode != _resolvedMode) {
+      
+      if (nextMode != _resolvedMode || _isMeasuring) {
         setState(() {
           _resolvedMode = nextMode;
+          _isMeasuring = false;
         });
       }
     });

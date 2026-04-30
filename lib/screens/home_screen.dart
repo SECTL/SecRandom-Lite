@@ -5,7 +5,7 @@ import '../widgets/control_panel.dart';
 import '../widgets/name_display.dart';
 import '../widgets/nav_rail.dart';
 import '../widgets/slide_panel.dart';
-import 'history_screen.dart';
+import 'history/history_screen.dart';
 import 'lottery_screen.dart';
 import 'settings_screen.dart';
 

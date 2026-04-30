@@ -101,7 +101,7 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info),
             title: const Text('关于'),
-            subtitle: const Text('Secrandom Lite v1.0.0'),
+            subtitle: const Text('Secrandom Lite v1.0.1'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
               Navigator.of(context).push(

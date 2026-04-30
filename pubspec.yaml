@@ -1,7 +1,7 @@
 name: secrandom_lite
 description: "基于 Material Design 3 的随机点名应用。"
 publish_to: 'none'
-version: 1.0.0+11
+version: 1.0.1+12
 
 environment:
   sdk: ^3.11.0

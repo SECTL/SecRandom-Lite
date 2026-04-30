@@ -5,10 +5,12 @@ class AboutSettingsScreen extends StatelessWidget {
   const AboutSettingsScreen({super.key});
 
   static const String _appName = 'Secrandom Lite';
-  static const String _version = 'v1.0.0';
+  static const String _version = 'v1.0.1';
   static const String _repositoryUrl =
       'https://github.com/LeafS825/SecRandom-lutter';
   static const String _authorGithubUrl = 'https://github.com/LeafS825';
+  static const String _organizationUrl = 'https://github.com/SECTL';
+  static const String _organizationWebsiteUrl = 'https://sectl.top';
 
   @override
   Widget build(BuildContext context) {
@@ -77,6 +79,22 @@ class AboutSettingsScreen extends StatelessWidget {
                 ),
                 const Divider(height: 1),
                 ListTile(
+                  leading: const Icon(Icons.group_outlined),
+                  title: const Text('项目组织'),
+                  subtitle: const Text('SECTL'),
+                  trailing: const Icon(Icons.open_in_new),
+                  onTap: _openOrganization,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.language_outlined),
+                  title: const Text('组织官网'),
+                  subtitle: const Text('sectl.top'),
+                  trailing: const Icon(Icons.open_in_new),
+                  onTap: _openOrganizationWebsite,
+                ),
+                const Divider(height: 1),
+                ListTile(
                   leading: const Icon(Icons.person_outline),
                   title: const Text('项目作者'),
                   subtitle: const Text('LeafS825'),
@@ -86,17 +104,6 @@ class AboutSettingsScreen extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              '感谢使用 $_appName。若你在使用中发现问题或有改进建议，欢迎前往项目仓库反馈。',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -104,6 +111,20 @@ class AboutSettingsScreen extends StatelessWidget {
 
   Future<void> _openRepository() async {
     final uri = Uri.parse(_repositoryUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _openOrganization() async {
+    final uri = Uri.parse(_organizationUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _openOrganizationWebsite() async {
+    final uri = Uri.parse(_organizationWebsiteUrl);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
