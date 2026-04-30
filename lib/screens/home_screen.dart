@@ -312,11 +312,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final bool isRailVisible = constraints.maxWidth >= _kRailMinWidth;
+    return PopScope(
+      canPop: _selectedIndex == 0,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && _selectedIndex != 0) {
+          setState(() => _selectedIndex = 0);
+        }
+      },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final bool isRailVisible = constraints.maxWidth >= _kRailMinWidth;
 
-        return Scaffold(
+          return Scaffold(
           bottomNavigationBar: !isRailVisible
               ? NavigationBar(
                   selectedIndex: _selectedIndex,
@@ -366,6 +373,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
+    ),
     );
   }
 }
