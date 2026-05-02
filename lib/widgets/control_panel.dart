@@ -164,12 +164,48 @@ class ControlPanel extends StatelessWidget {
   }
 
   // 构建性别下拉选项
-  List<DropdownMenuItem<String>> _buildGenderItems() {
-    return const [
-      DropdownMenuItem(value: null, child: Text('所有性别')),
-      DropdownMenuItem(value: '男', child: Text('男')),
-      DropdownMenuItem(value: '女', child: Text('女')),
+  List<DropdownMenuItem<String>> _buildGenderItems(AppProvider appProvider) {
+    final items = <DropdownMenuItem<String>>[
+      const DropdownMenuItem(value: null, child: Text('所有性别')),
     ];
+
+    // 获取所有学生中出现的性别（包括自定义性别）
+    final allGenders = <String>{};
+    for (final student in appProvider.allStudents) {
+      if (student.gender.isNotEmpty) {
+        allGenders.add(student.gender);
+      }
+    }
+
+    // 按照常见性别排序，自定义性别排在后面
+    final commonGenders = ['男', '女', '未知'];
+    final customGenders = allGenders
+        .where((g) => !commonGenders.contains(g))
+        .toList()
+      ..sort();
+
+    // 添加常见性别
+    for (final gender in commonGenders) {
+      if (allGenders.contains(gender)) {
+        items.add(DropdownMenuItem(value: gender, child: Text(gender)));
+      }
+    }
+
+    // 添加自定义性别
+    for (final gender in customGenders) {
+      items.add(DropdownMenuItem(
+        value: gender,
+        child: Row(
+          children: [
+            Text(gender),
+            const SizedBox(width: 4),
+            const Icon(Icons.person, size: 14, color: Colors.grey),
+          ],
+        ),
+      ));
+    }
+
+    return items;
   }
 
   bool _isRoundActive(AppProvider appProvider) => appProvider.isRolling;
@@ -312,7 +348,7 @@ class ControlPanel extends StatelessWidget {
             ),
             contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           ),
-          items: _buildGenderItems(),
+          items: _buildGenderItems(appProvider),
           onChanged: controlsLocked
               ? null
               : (value) => appProvider.setSelectedGender(value),
@@ -476,14 +512,16 @@ class ControlPanel extends StatelessWidget {
                   isDense: true,
                   labelStyle: const TextStyle(fontSize: 12),
                 ),
-                items: _buildGenderItems().map((item) {
+                items: _buildGenderItems(appProvider).map((item) {
                   return DropdownMenuItem<String>(
                     value: item.value,
-                    child: Text(
-                      (item.child as Text).data!,
-                      style: const TextStyle(fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: item.child is Row
+                        ? item.child!
+                        : Text(
+                            (item.child as Text).data!,
+                            style: const TextStyle(fontSize: 12),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                   );
                 }).toList(),
                 onChanged: controlsLocked
@@ -647,14 +685,16 @@ class ControlPanel extends StatelessWidget {
                     isDense: true,
                     labelStyle: const TextStyle(fontSize: 10),
                   ),
-                  items: _buildGenderItems().map((item) {
+                  items: _buildGenderItems(appProvider).map((item) {
                     return DropdownMenuItem<String>(
                       value: item.value,
-                      child: Text(
-                        (item.child as Text).data!,
-                        style: const TextStyle(fontSize: 10),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      child: item.child is Row
+                          ? item.child!
+                          : Text(
+                              (item.child as Text).data!,
+                              style: const TextStyle(fontSize: 10),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                     );
                   }).toList(),
                   onChanged: controlsLocked

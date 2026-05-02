@@ -22,6 +22,8 @@ dependencies:
   flutter_secure_storage: ^9.0.0
   app_links: ^6.3.2
   cached_network_image: ^3.3.0
+  excel: ^4.0.6
+  file_picker: ^8.0.0
 
 dev_dependencies:
   flutter_test:

@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:convert';
 import '../../models/prize_pool.dart';
 import '../../models/prize.dart';
 import '../../providers/app_provider.dart';
+import '../../services/excel_import_service.dart';
 import '../../services/lottery_service.dart';
 import '../../widgets/responsive_grid.dart';
+import 'file_prize_import_preview_screen.dart';
 
 enum _EntryAction { edit, delete }
 
@@ -238,10 +242,252 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
     await _handlePoolAction(pool, action);
   }
 
+  Future<void> _showQuickImportDialog(BuildContext context) async {
+    // 先让用户选择目标奖池
+    final selectedPool = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('选择导入到哪个奖池'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, '__create_new__'),
+            child: const Row(
+              children: [
+                Icon(Icons.add, color: Colors.blue),
+                SizedBox(width: 8),
+                Text('新建奖池', style: TextStyle(color: Colors.blue)),
+              ],
+            ),
+          ),
+          const Divider(),
+          ..._prizePools.map((pool) => SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, pool.name),
+            child: Text(pool.name),
+          )),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
+
+    if (selectedPool == null) return;
+
+    String targetPool = selectedPool;
+
+    // 如果用户选择创建新奖池
+    if (selectedPool == '__create_new__') {
+      final newPoolName = await _showCreatePoolDialog(context);
+      if (newPoolName == null || newPoolName.isEmpty) return;
+
+      // 检查奖池是否已存在
+      if (_prizePools.any((p) => p.name == newPoolName)) {
+        if (!mounted) return;
+        _showErrorDialog('奖池 "$newPoolName" 已存在');
+        return;
+      }
+
+      // 创建新奖池
+      final newPool = PrizePool(name: newPoolName);
+      await _lotteryService.savePrizePool(newPool);
+      await _loadPrizePools();
+      targetPool = newPoolName;
+    }
+
+    // 选择文件
+    FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'txt'],
+        withData: true,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _showErrorDialog('文件选择失败: ${e.toString()}');
+      return;
+    }
+
+    if (result == null) return;
+
+    final file = result.files.single;
+    final extension = file.name.split('.').last.toLowerCase();
+
+    // 显示加载指示器
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      PrizeImportResult importResult;
+      switch (extension) {
+        case 'xlsx':
+          if (file.bytes == null) {
+            Navigator.pop(context);
+            _showErrorDialog('无法读取文件内容');
+            return;
+          }
+          importResult = await ExcelImportService.parsePrizeExcel(file.bytes!);
+          break;
+        case 'txt':
+          final bytes = file.bytes;
+          if (bytes == null) {
+            Navigator.pop(context);
+            _showErrorDialog('无法读取文件内容');
+            return;
+          }
+          importResult = await ExcelImportService.parsePrizeTxt(utf8.decode(bytes));
+          break;
+        default:
+          Navigator.pop(context);
+          _showErrorDialog('不支持的文件格式，请使用 .xlsx 或 .txt 文件');
+          return;
+      }
+
+      Navigator.pop(context); // 关闭加载指示器
+
+      // 检查解析结果
+      if (importResult.names.isEmpty) {
+        _showErrorDialog(
+          importResult.errors.isNotEmpty
+              ? '文件解析失败: ${importResult.errors.first}'
+              : '文件中没有找到有效的奖品数据',
+        );
+        return;
+      }
+
+      if (importResult.errors.isNotEmpty) {
+        final proceed = await _showWarningDialog(
+          '解析警告',
+          '发现 ${importResult.errors.length} 条问题数据：\n'
+              '${importResult.errors.take(5).join('\n')}'
+              '${importResult.errors.length > 5 ? '\n...' : ''}\n\n'
+              '是否继续导入有效的 ${importResult.names.length} 条数据？',
+        );
+        if (proceed != true) return;
+      }
+
+      // 导航到预览页面
+      final importedPrizes = await Navigator.push<List<Prize>>(
+        context,
+        MaterialPageRoute(
+          builder: (context) => FilePrizeImportPreviewScreen(
+            poolName: targetPool,
+            importResult: importResult,
+          ),
+        ),
+      );
+
+      if (importedPrizes != null && importedPrizes.isNotEmpty && mounted) {
+        // 保存导入的奖品
+        final existingPrizes = await _lotteryService.loadPrizes(targetPool);
+        existingPrizes.addAll(importedPrizes);
+        await _lotteryService.savePrizes(targetPool, existingPrizes);
+        await _loadPrizePools();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('成功导入 ${importedPrizes.length} 个奖品')),
+        );
+      }
+    } catch (e) {
+      Navigator.pop(context); // 关闭加载指示器（如果还在）
+      _showErrorDialog('文件解析失败: ${e.toString()}');
+    }
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.error, color: Colors.red),
+            SizedBox(width: 8),
+            Text('错误'),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<bool?> _showWarningDialog(String title, String message) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.warning, color: Colors.orange),
+            const SizedBox(width: 8),
+            Text(title),
+          ],
+        ),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('继续导入'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<String?> _showCreatePoolDialog(BuildContext context) {
+    final nameController = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('新建奖池'),
+        content: TextField(
+          controller: nameController,
+          decoration: const InputDecoration(
+            labelText: '奖池名称',
+            hintText: '请输入奖池名称',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, nameController.text.trim()),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('抽奖设置')),
+      appBar: AppBar(
+        title: const Text('抽奖设置'),
+        actions: [
+          TextButton.icon(
+            onPressed: () => _showQuickImportDialog(context),
+            icon: const Icon(Icons.file_upload),
+            label: const Text('快速导入'),
+          ),
+        ],
+      ),
       body: Consumer<AppProvider>(
         builder: (context, appProvider, _) {
           return Column(
