@@ -304,7 +304,7 @@ class ControlPanel extends StatelessWidget {
         // 班级下拉菜单
         DropdownButtonFormField<String>(
           key: classDropdownKey,
-          value: appProvider.selectedClass,
+          initialValue: appProvider.selectedClass,
           decoration: InputDecoration(
             labelText: '班级',
             border: OutlineInputBorder(
@@ -322,7 +322,7 @@ class ControlPanel extends StatelessWidget {
         // 小组筛选
         DropdownButtonFormField<String>(
           key: groupDropdownKey,
-          value: appProvider.selectedGroup,
+          initialValue: appProvider.selectedGroup,
           decoration: InputDecoration(
             labelText: '小组',
             border: OutlineInputBorder(
@@ -340,7 +340,7 @@ class ControlPanel extends StatelessWidget {
         // 性别筛选
         DropdownButtonFormField<String>(
           key: genderDropdownKey,
-          value: appProvider.selectedGender,
+          initialValue: appProvider.selectedGender,
           decoration: InputDecoration(
             labelText: '性别',
             border: OutlineInputBorder(
@@ -441,7 +441,7 @@ class ControlPanel extends StatelessWidget {
         // 班级下拉菜单
         DropdownButtonFormField<String>(
           key: classDropdownKey,
-          value: appProvider.selectedClass,
+          initialValue: appProvider.selectedClass,
           decoration: InputDecoration(
             labelText: '班级',
             border: OutlineInputBorder(
@@ -470,7 +470,7 @@ class ControlPanel extends StatelessWidget {
             Expanded(
               child: DropdownButtonFormField<String>(
                 key: groupDropdownKey,
-                value: appProvider.selectedGroup,
+                initialValue: appProvider.selectedGroup,
                 isExpanded: true,
                 decoration: InputDecoration(
                   labelText: '小组',
@@ -501,7 +501,7 @@ class ControlPanel extends StatelessWidget {
             Expanded(
               child: DropdownButtonFormField<String>(
                 key: genderDropdownKey,
-                value: appProvider.selectedGender,
+                initialValue: appProvider.selectedGender,
                 isExpanded: true,
                 decoration: InputDecoration(
                   labelText: '性别',
@@ -516,7 +516,7 @@ class ControlPanel extends StatelessWidget {
                   return DropdownMenuItem<String>(
                     value: item.value,
                     child: item.child is Row
-                        ? item.child!
+                        ? item.child
                         : Text(
                             (item.child as Text).data!,
                             style: const TextStyle(fontSize: 12),
@@ -615,7 +615,7 @@ class ControlPanel extends StatelessWidget {
           // 班级下拉菜单
           DropdownButtonFormField<String>(
             key: classDropdownKey,
-            value: appProvider.selectedClass,
+            initialValue: appProvider.selectedClass,
             decoration: InputDecoration(
               labelText: '班级',
               border: OutlineInputBorder(
@@ -645,7 +645,7 @@ class ControlPanel extends StatelessWidget {
               Expanded(
                 child: DropdownButtonFormField<String>(
                   key: groupDropdownKey,
-                  value: appProvider.selectedGroup,
+                  initialValue: appProvider.selectedGroup,
                   isExpanded: true,
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
@@ -675,7 +675,7 @@ class ControlPanel extends StatelessWidget {
               Expanded(
                 child: DropdownButtonFormField<String>(
                   key: genderDropdownKey,
-                  value: appProvider.selectedGender,
+                  initialValue: appProvider.selectedGender,
                   isExpanded: true,
                   decoration: InputDecoration(
                     border: OutlineInputBorder(
@@ -689,7 +689,7 @@ class ControlPanel extends StatelessWidget {
                     return DropdownMenuItem<String>(
                       value: item.value,
                       child: item.child is Row
-                          ? item.child!
+                          ? item.child
                           : Text(
                               (item.child as Text).data!,
                               style: const TextStyle(fontSize: 10),

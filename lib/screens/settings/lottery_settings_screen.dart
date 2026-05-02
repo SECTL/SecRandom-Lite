@@ -111,7 +111,9 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
             if (mounted) _loadPrizePools();
           });
         }
-      } catch (e) {}
+      } catch (e) {
+        // 保存奖池失败，忽略错误
+      }
     }
   }
 
@@ -199,7 +201,9 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
       try {
         await _lotteryService.deletePrizePool(pool.name);
         await _loadPrizePools();
-      } catch (e) {}
+      } catch (e) {
+        // 删除奖池失败，忽略错误
+      }
     }
   }
 
@@ -327,8 +331,8 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
       switch (extension) {
         case 'xlsx':
           if (file.bytes == null) {
-            Navigator.pop(context);
-            _showErrorDialog('无法读取文件内容');
+            if (mounted) Navigator.pop(context);
+            if (mounted) _showErrorDialog('无法读取文件内容');
             return;
           }
           importResult = await ExcelImportService.parsePrizeExcel(file.bytes!);
@@ -336,27 +340,29 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
         case 'txt':
           final bytes = file.bytes;
           if (bytes == null) {
-            Navigator.pop(context);
-            _showErrorDialog('无法读取文件内容');
+            if (mounted) Navigator.pop(context);
+            if (mounted) _showErrorDialog('无法读取文件内容');
             return;
           }
           importResult = await ExcelImportService.parsePrizeTxt(utf8.decode(bytes));
           break;
         default:
-          Navigator.pop(context);
-          _showErrorDialog('不支持的文件格式，请使用 .xlsx 或 .txt 文件');
+          if (mounted) Navigator.pop(context);
+          if (mounted) _showErrorDialog('不支持的文件格式，请使用 .xlsx 或 .txt 文件');
           return;
       }
 
-      Navigator.pop(context); // 关闭加载指示器
+      if (mounted) Navigator.pop(context); // 关闭加载指示器
 
       // 检查解析结果
       if (importResult.names.isEmpty) {
-        _showErrorDialog(
-          importResult.errors.isNotEmpty
-              ? '文件解析失败: ${importResult.errors.first}'
-              : '文件中没有找到有效的奖品数据',
-        );
+        if (mounted) {
+          _showErrorDialog(
+            importResult.errors.isNotEmpty
+                ? '文件解析失败: ${importResult.errors.first}'
+                : '文件中没有找到有效的奖品数据',
+          );
+        }
         return;
       }
 
@@ -389,9 +395,11 @@ class _LotterySettingsScreenState extends State<LotterySettingsScreen> {
         await _lotteryService.savePrizes(targetPool, existingPrizes);
         await _loadPrizePools();
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('成功导入 ${importedPrizes.length} 个奖品')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('成功导入 ${importedPrizes.length} 个奖品')),
+          );
+        }
       }
     } catch (e) {
       Navigator.pop(context); // 关闭加载指示器（如果还在）
@@ -636,7 +644,9 @@ class _PrizePoolSettingsScreenState extends State<PrizePoolSettingsScreen> {
     try {
       await _lotteryService.savePrizePool(_pool);
       await _lotteryService.savePrizes(_pool.name, _prizes);
-    } catch (e) {}
+    } catch (e) {
+      // 保存奖池失败，忽略错误
+    }
   }
 
   Future<void> _addPrize() async {

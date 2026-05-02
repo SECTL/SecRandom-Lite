@@ -8,7 +8,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('LotteryControlPanel', () {
-    Future<void> _pumpControlPanel(
+    Future<void> pumpControlPanel(
       WidgetTester tester, {
       required LotteryControlPanelLayoutMode layoutMode,
       required AnimationMode animationMode,
@@ -48,48 +48,48 @@ void main() {
       await tester.pump();
     }
 
-    Finder _startButtonFinder() => find.byKey(LotteryControlPanel.startButtonKey);
+    Finder startButtonFinder() => find.byKey(LotteryControlPanel.startButtonKey);
 
-    FilledButton _startButtonWidget(WidgetTester tester) {
-      return tester.widget<FilledButton>(_startButtonFinder());
+    FilledButton startButtonWidget(WidgetTester tester) {
+      return tester.widget<FilledButton>(startButtonFinder());
     }
 
-    OutlinedButton _resetButtonWidget(WidgetTester tester) {
+    OutlinedButton resetButtonWidget(WidgetTester tester) {
       return tester.widget<OutlinedButton>(
         find.byKey(LotteryControlPanel.resetButtonKey),
       );
     }
 
-    IconButton _iconButton(WidgetTester tester, Key key) {
+    IconButton iconButton(WidgetTester tester, Key key) {
       return tester.widget<IconButton>(find.byKey(key));
     }
 
-    DropdownButtonFormField<PrizePool> _poolDropdown(WidgetTester tester) {
+    DropdownButtonFormField<PrizePool> poolDropdown(WidgetTester tester) {
       return tester.widget<DropdownButtonFormField<PrizePool>>(
         find.byKey(LotteryControlPanel.poolDropdownKey),
       );
     }
 
-    void _expectPrimaryButton(
+    void expectPrimaryButton(
       WidgetTester tester, {
       required String label,
       required bool enabled,
     }) {
       expect(find.text(label), findsOneWidget);
-      expect(_startButtonWidget(tester).onPressed == null, !enabled);
+      expect(startButtonWidget(tester).onPressed == null, !enabled);
     }
 
-    void _expectRoundControlsLocked(WidgetTester tester, {required bool locked}) {
+    void expectRoundControlsLocked(WidgetTester tester, {required bool locked}) {
       expect(
-        _iconButton(tester, LotteryControlPanel.decrementDrawCountKey).onPressed == null,
+        iconButton(tester, LotteryControlPanel.decrementDrawCountKey).onPressed == null,
         locked,
       );
       expect(
-        _iconButton(tester, LotteryControlPanel.incrementDrawCountKey).onPressed == null,
+        iconButton(tester, LotteryControlPanel.incrementDrawCountKey).onPressed == null,
         locked,
       );
-      expect(_resetButtonWidget(tester).onPressed == null, locked);
-      expect(_poolDropdown(tester).onChanged == null, locked);
+      expect(resetButtonWidget(tester).onPressed == null, locked);
+      expect(poolDropdown(tester).onChanged == null, locked);
     }
 
     final layouts = <String, LotteryControlPanelLayoutMode>{
@@ -105,7 +105,7 @@ void main() {
           int startCalls = 0;
           int stopCalls = 0;
 
-          await _pumpControlPanel(
+          await pumpControlPanel(
             tester,
             layoutMode: entry.value,
             animationMode: AnimationMode.manualStop,
@@ -115,10 +115,10 @@ void main() {
             onStopDraw: () => stopCalls++,
           );
 
-          _expectPrimaryButton(tester, label: '停止', enabled: true);
-          _expectRoundControlsLocked(tester, locked: true);
+          expectPrimaryButton(tester, label: '停止', enabled: true);
+          expectRoundControlsLocked(tester, locked: true);
 
-          await tester.tap(_startButtonFinder());
+          await tester.tap(startButtonFinder());
           await tester.pump();
 
           expect(startCalls, 0, reason: entry.key);
@@ -131,7 +131,7 @@ void main() {
       'auto layout disables the primary button and keeps round-changing controls locked in all layouts',
       (tester) async {
         for (final entry in layouts.entries) {
-          await _pumpControlPanel(
+          await pumpControlPanel(
             tester,
             layoutMode: entry.value,
             animationMode: AnimationMode.auto,
@@ -141,8 +141,8 @@ void main() {
             onStopDraw: () {},
           );
 
-          _expectPrimaryButton(tester, label: '抽奖中...', enabled: false);
-          _expectRoundControlsLocked(tester, locked: true);
+          expectPrimaryButton(tester, label: '抽奖中...', enabled: false);
+          expectRoundControlsLocked(tester, locked: true);
         }
       },
     );
@@ -153,7 +153,7 @@ void main() {
         for (final entry in layouts.entries) {
           int startCalls = 0;
 
-          await _pumpControlPanel(
+          await pumpControlPanel(
             tester,
             layoutMode: entry.value,
             animationMode: AnimationMode.none,
@@ -163,11 +163,11 @@ void main() {
             onStopDraw: () {},
           );
 
-          _expectPrimaryButton(tester, label: '开始', enabled: true);
-          _expectRoundControlsLocked(tester, locked: false);
+          expectPrimaryButton(tester, label: '开始', enabled: true);
+          expectRoundControlsLocked(tester, locked: false);
           expect(find.text('抽奖中...'), findsNothing);
 
-          await tester.tap(_startButtonFinder());
+          await tester.tap(startButtonFinder());
           await tester.pump();
 
           expect(startCalls, 1, reason: entry.key);

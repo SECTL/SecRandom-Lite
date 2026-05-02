@@ -60,6 +60,7 @@ void main() {
           await dataDir.delete(recursive: true);
         }
       } catch (e) {
+        // 清理测试数据失败，忽略错误
       }
       try {
         final currentDir = Directory.current;
@@ -68,6 +69,7 @@ void main() {
           await dataDir.delete(recursive: true);
         }
       } catch (e) {
+        // 清理测试数据失败，忽略错误
       }
     });
 

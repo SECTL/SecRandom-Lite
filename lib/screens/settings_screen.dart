@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/app_provider.dart';
 import '../providers/auth_provider.dart';
 import 'settings/about_settings_screen.dart';
+import 'settings/data_management_screen.dart';
 import 'settings/draw_settings_screen.dart';
 import 'settings/lottery_settings_screen.dart';
 import 'settings/personalization_settings_screen.dart';
@@ -76,6 +77,20 @@ class SettingsScreen extends StatelessWidget {
               Navigator.of(context).push(
                 MaterialPageRoute(
                   builder: (context) => const PersonalizationSettingsScreen(),
+                ),
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.storage),
+            title: const Text('数据管理'),
+            subtitle: const Text('导出和导入应用数据'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const DataManagementScreen(),
                 ),
               );
             },

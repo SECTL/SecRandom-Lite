@@ -19,7 +19,6 @@ class FilePrizeImportPreviewScreen extends StatefulWidget {
 }
 
 class _FilePrizeImportPreviewScreenState extends State<FilePrizeImportPreviewScreen> {
-  List<Prize> _importedPrizes = [];
   bool _isImporting = false;
 
   Future<void> _importPrizes() async {
@@ -43,7 +42,6 @@ class _FilePrizeImportPreviewScreenState extends State<FilePrizeImportPreviewScr
 
       setState(() {
         _isImporting = false;
-        _importedPrizes = importedPrizes;
       });
 
       if (!mounted) return;

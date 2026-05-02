@@ -373,8 +373,8 @@ class _RollCallSettingsScreenState extends State<RollCallSettingsScreen> {
       switch (extension) {
         case 'xlsx':
           if (file.bytes == null) {
-            Navigator.pop(context);
-            _showErrorDialog('无法读取文件内容');
+            if (mounted) Navigator.pop(context);
+            if (mounted) _showErrorDialog('无法读取文件内容');
             return;
           }
           importResult = await ExcelImportService.parseExcel(file.bytes!);
@@ -382,27 +382,29 @@ class _RollCallSettingsScreenState extends State<RollCallSettingsScreen> {
         case 'txt':
           final bytes = file.bytes;
           if (bytes == null) {
-            Navigator.pop(context);
-            _showErrorDialog('无法读取文件内容');
+            if (mounted) Navigator.pop(context);
+            if (mounted) _showErrorDialog('无法读取文件内容');
             return;
           }
           importResult = await ExcelImportService.parseTxt(utf8.decode(bytes));
           break;
         default:
-          Navigator.pop(context);
-          _showErrorDialog('不支持的文件格式，请使用 .xlsx 或 .txt 文件');
+          if (mounted) Navigator.pop(context);
+          if (mounted) _showErrorDialog('不支持的文件格式，请使用 .xlsx 或 .txt 文件');
           return;
       }
 
-      Navigator.pop(context); // 关闭加载指示器
+      if (mounted) Navigator.pop(context); // 关闭加载指示器
 
       // 检查解析结果
       if (importResult.names.isEmpty) {
-        _showErrorDialog(
-          importResult.errors.isNotEmpty
-              ? '文件解析失败: ${importResult.errors.first}'
-              : '文件中没有找到有效的学生数据',
-        );
+        if (mounted) {
+          _showErrorDialog(
+            importResult.errors.isNotEmpty
+                ? '文件解析失败: ${importResult.errors.first}'
+                : '文件中没有找到有效的学生数据',
+          );
+        }
         return;
       }
 
@@ -434,8 +436,8 @@ class _RollCallSettingsScreenState extends State<RollCallSettingsScreen> {
         );
       }
     } catch (e) {
-      Navigator.pop(context); // 关闭加载指示器（如果还在）
-      _showErrorDialog('文件解析失败: ${e.toString()}');
+      if (mounted) Navigator.pop(context); // 关闭加载指示器（如果还在）
+      if (mounted) _showErrorDialog('文件解析失败: ${e.toString()}');
     }
   }
 
@@ -740,20 +742,6 @@ class _ClassStudentSettingsScreenState extends State<ClassStudentSettingsScreen>
     }
   }
 
-  Future<void> _openQuickImport() async {
-    final result = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => StudentImportScreen(className: _className),
-      ),
-    );
-    if (result == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('学生导入成功')),
-      );
-    }
-  }
-
   Future<_StudentFormData?> _showStudentDialog({Student? initialStudent}) async {
     final nameController = TextEditingController(text: initialStudent?.name ?? '');
     final groupController = TextEditingController(text: initialStudent?.group ?? '1');
@@ -785,13 +773,13 @@ class _ClassStudentSettingsScreenState extends State<ClassStudentSettingsScreen>
                     const DropdownMenuItem(value: '男', child: Text('男')),
                     const DropdownMenuItem(value: '女', child: Text('女')),
                     const DropdownMenuItem(value: '未知', child: Text('未知')),
-                    DropdownMenuItem(
+                    const DropdownMenuItem(
                       value: '__custom__',
                       child: Row(
                         children: [
-                          const Icon(Icons.edit, size: 16),
-                          const SizedBox(width: 8),
-                          const Text('自定义...'),
+                          Icon(Icons.edit, size: 16),
+                          SizedBox(width: 8),
+                          Text('自定义...'),
                         ],
                       ),
                     ),
