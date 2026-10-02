@@ -8,6 +8,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../utils/logger.dart';
+
 import '../../models/auth_token.dart';
 import '../../models/pending_auth_session.dart';
 import '../../models/user_info.dart';
@@ -119,12 +121,16 @@ class SectlAuthService {
       'state': session.state,
       'code_challenge': generateCodeChallenge(session.codeVerifier),
       'code_challenge_method': 'S256',
+      'scope': AuthConfig.oauthScopes,
     };
 
     final uri = Uri.parse(
       '${AuthConfig.authUrl}${AuthConfig.authorizeEndpoint}',
     );
-    return uri.replace(queryParameters: params).toString();
+    final authUrl = uri.replace(queryParameters: params).toString();
+    logger.d('OAuth authorize URL: $authUrl');
+    logger.d('OAuth redirect_uri: ${session.redirectUri}');
+    return authUrl;
   }
 
   Future<UserInfo> login() async {
@@ -456,6 +462,7 @@ class SectlAuthService {
 
   Future<void> _prepareCallbackRuntime(PendingAuthSession session) async {
     if (session.targetPlatform == PendingAuthTargetPlatform.android) {
+      // Android 只监听 Deep Link，授权参数由 secrandom://auth/callback 直接带回
       _linkSubscription = _appLinks.uriLinkStream.listen(
         (uri) {
           unawaited(_handleIncomingCallbackUri(uri));
@@ -467,10 +474,10 @@ class SectlAuthService {
           }
         },
       );
+      return;
     }
 
-    if (session.targetPlatform == PendingAuthTargetPlatform.windows ||
-        session.targetPlatform == PendingAuthTargetPlatform.android) {
+    if (session.targetPlatform == PendingAuthTargetPlatform.windows) {
       _loopbackServer = AuthLoopbackServer();
       final loopbackPort =
           session.loopbackPort ??
@@ -605,8 +612,7 @@ class SectlAuthService {
       payload['ru'] = _resolveRedirectUri(targetPlatform);
     }
 
-    if (targetPlatform == PendingAuthTargetPlatform.windows ||
-        targetPlatform == PendingAuthTargetPlatform.android) {
+    if (targetPlatform == PendingAuthTargetPlatform.windows) {
       payload['p'] = _resolveLoopbackPort(targetPlatform);
     }
 
@@ -616,9 +622,8 @@ class SectlAuthService {
   int? _resolveLoopbackPort(PendingAuthTargetPlatform targetPlatform) {
     switch (targetPlatform) {
       case PendingAuthTargetPlatform.web:
-        return null;
       case PendingAuthTargetPlatform.android:
-        return AuthConfig.androidLoopbackPort;
+        return null;
       case PendingAuthTargetPlatform.windows:
         return AuthConfig.windowsLoopbackPort;
     }

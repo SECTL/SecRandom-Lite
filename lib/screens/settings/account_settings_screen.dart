@@ -237,7 +237,7 @@ class AccountSettingsBody extends StatelessWidget {
             context,
             icon: Icons.shield_outlined,
             label: '权限等级',
-            value: userInfo.role,
+            value: userInfo.permission,
           ),
           if (userInfo.githubUsername != null && userInfo.githubUsername!.isNotEmpty)
             _buildDetailItem(
@@ -293,6 +293,14 @@ class AccountSettingsBody extends StatelessWidget {
     authProvider.clearError();
     try {
       await authProvider.login();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('登录成功'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

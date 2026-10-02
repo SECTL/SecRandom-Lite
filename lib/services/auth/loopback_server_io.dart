@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -21,11 +22,19 @@ class AuthLoopbackServer {
           return;
         }
 
-        await onRequest(request.uri);
+        // 先把结果页写回浏览器，再异步处理换 token。
+        // 否则 completeLogin 里的 cleanup 会 force-close，浏览器侧像连接被拒绝。
+        unawaited(() async {
+          try {
+            await onRequest(request.uri);
+          } catch (_) {
+            // 登录 Completer 已收到错误；这里吞掉以避免未处理异常。
+          }
+        }());
         await _writeHtml(
           request.response,
           title: 'SECTL login complete',
-          message: 'You can return to SecRandom Lite now.',
+          message: '授权已完成，现在可以关闭本页面并返回 SecRandom Lite。',
         );
       } catch (_) {
         try {
@@ -44,7 +53,8 @@ class AuthLoopbackServer {
   }
 
   Future<void> close() async {
-    await _server?.close(force: true);
+    // 不用 force：等在写的结果页先落盘，避免浏览器看到连接被重置。
+    await _server?.close(force: false);
     _server = null;
   }
 

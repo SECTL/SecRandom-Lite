@@ -188,7 +188,7 @@ void main() {
         'login_time': null,
       });
 
-      expect(userInfo.permission, 'user');
+      expect(userInfo.permission, '1');
       expect(userInfo.role, '普通用户');
       expect(userInfo.bio, '');
       expect(userInfo.gender, 'secret');

@@ -24,14 +24,14 @@ class AuthConfig {
     defaultValue: 'https://secrandom-lite.sectl.cn/auth_callback_web.html',
   );
 
-  static const String authCallbackAndroidUrl = String.fromEnvironment(
-    'SECTL_AUTH_CALLBACK_ANDROID_URL',
-    defaultValue: 'https://secrandom-lite.sectl.cn/auth_callback_android.html',
-  );
-
   static const String authCallbackWindowsUrl = String.fromEnvironment(
     'SECTL_AUTH_CALLBACK_WINDOWS_URL',
     defaultValue: 'https://secrandom-lite.sectl.cn/auth_callback_windows.html',
+  );
+
+  static const String authCallbackAndroidUrl = String.fromEnvironment(
+    'SECTL_AUTH_CALLBACK_ANDROID_URL',
+    defaultValue: 'https://secrandom-lite.sectl.cn/auth_callback_android',
   );
 
   static const String webAppUrl = String.fromEnvironment(
@@ -46,6 +46,7 @@ class AuthConfig {
       useMockAuth ? mockAuthBaseUrl : 'https://sectl.cn';
 
   static const String authorizeEndpoint = '/oauth/authorize';
+  static const String oauthScopes = 'user:read cloud:read cloud:write';
   static const String tokenEndpoint = '/api/oauth/token';
   static const String refreshEndpoint = '/api/oauth/refresh';
   static const String userInfoEndpoint = '/api/oauth/userinfo';
@@ -63,10 +64,6 @@ class AuthConfig {
   static const int windowsLoopbackPort = int.fromEnvironment(
     'SECTL_WINDOWS_LOOPBACK_PORT',
     defaultValue: 8788,
-  );
-  static const int androidLoopbackPort = int.fromEnvironment(
-    'SECTL_ANDROID_LOOPBACK_PORT',
-    defaultValue: 8789,
   );
   static const String loopbackPath = '/callback';
 
@@ -100,17 +97,26 @@ class AuthConfig {
   }
 
   static String get androidOauthRedirectUri {
+    // Android 使用 Web 跳板页接收 OAuth 回调，再通过 Deep Link 唤起应用。
+    // 与桌面端的 auth_callback_windows.html 模式一致，避免 SECTL 平台
+    // 对自定义 scheme 回调地址的校验问题。
     if (useMockAuth &&
         authCallbackAndroidUrl ==
-            'https://secrandom-lite.sectl.cn/auth_callback_android.html') {
+            'https://secrandom-lite.sectl.cn/auth_callback_android') {
       return '$mockAuthBaseUrl/auth_callback_android.html';
     }
     return authCallbackAndroidUrl;
   }
 
   static String get windowsOauthRedirectUri {
-    // Windows 直接重定向到本地 loopback，不经过 web 中转
-    return 'http://$loopbackHost:$windowsLoopbackPort$loopbackPath';
+    // 指向 Web 完成页，由页面把 code/state 转发到本地 loopback。
+    // 浏览器始终停留在友好结果页，避免直接打开 127.0.0.1 出现「连接被拒绝」。
+    if (useMockAuth &&
+        authCallbackWindowsUrl ==
+            'https://secrandom-lite.sectl.cn/auth_callback_windows.html') {
+      return '$mockAuthBaseUrl/auth_callback_windows.html';
+    }
+    return authCallbackWindowsUrl;
   }
 
   static String get deepLinkCallbackUri =>

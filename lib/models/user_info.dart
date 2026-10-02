@@ -28,6 +28,9 @@ class UserInfo {
   final String createdAt;
   final String platformId;
   final String loginTime;
+  final bool isDeveloper;
+  final bool isContributor;
+  final String responsibility;
 
   UserInfo({
     required this.userId,
@@ -56,6 +59,9 @@ class UserInfo {
     required this.createdAt,
     required this.platformId,
     required this.loginTime,
+    this.isDeveloper = false,
+    this.isContributor = false,
+    this.responsibility = '',
   });
 
   factory UserInfo.fromJson(Map<String, dynamic> json) {
@@ -64,7 +70,7 @@ class UserInfo {
       email: _stringValue(json['email']),
       name: _stringValue(json['name'], fallback: '用户'),
       githubUsername: json['github_username'] as String?,
-      permission: _stringValue(json['permission'], fallback: 'user'),
+      permission: _permissionValue(json['permission']),
       role: _stringValue(json['role'], fallback: '普通用户'),
       avatarUrl: json['avatar_url'] as String?,
       backgroundUrl: json['background_url'] as String?,
@@ -96,7 +102,18 @@ class UserInfo {
       createdAt: _stringValue(json['created_at']),
       platformId: _stringValue(json['platform_id']),
       loginTime: _stringValue(json['login_time']),
+      isDeveloper: json['is_developer'] as bool? ?? false,
+      isContributor: json['is_contributor'] as bool? ?? false,
+      responsibility: _stringValue(json['responsibility']),
     );
+  }
+
+  /// API 文档中 permission 为数字等级（默认 1），兼容历史字符串取值。
+  static String _permissionValue(Object? value) {
+    if (value == null) return '1';
+    if (value is num) return value.toInt().toString();
+    final text = value.toString().trim();
+    return text.isEmpty ? '1' : text;
   }
 
   static String _stringValue(Object? value, {String fallback = ''}) {
@@ -136,6 +153,9 @@ class UserInfo {
       'created_at': createdAt,
       'platform_id': platformId,
       'login_time': loginTime,
+      'is_developer': isDeveloper,
+      'is_contributor': isContributor,
+      'responsibility': responsibility,
     };
   }
 
