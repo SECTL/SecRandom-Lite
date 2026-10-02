@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/app_config.dart';
 import '../models/draw_stats.dart';
 import '../models/history_record.dart';
+import '../models/lottery_record.dart';
 import '../models/student.dart';
 import '../services/cloud/cloud_sync_service.dart';
 import '../services/data_service.dart';
@@ -24,6 +25,7 @@ class AppProvider with ChangeNotifier {
   List<String> _groups = ['1'];
   Map<String, List<String>> _classGroups = {};
   DrawStats _rollcallStats = DrawStats();
+  DrawStats _lotteryStats = DrawStats();
 
   bool _isRolling = false;
   bool _isDisposed = false;
@@ -69,6 +71,7 @@ class AppProvider with ChangeNotifier {
   List<Student> get filteredStudents => _filteredStudents();
   List<String> get groups => _groups;
   DrawStats get rollcallStats => _rollcallStats;
+  DrawStats get lotteryStats => _lotteryStats;
   CloudSyncService get cloudSyncService => _cloudSyncService;
 
   AppProvider() {
@@ -84,6 +87,9 @@ class AppProvider with ChangeNotifier {
     _allStudents = await _dataService.loadStudents();
     _history = await _dataService.loadHistory();
     _rollcallStats = DrawStats.fromHistoryNames(_history.map((r) => r.name));
+    _lotteryStats = DrawStats.fromLotteryRecords(
+      await _dataService.loadLotteryRecords(),
+    );
 
     final config = await _dataService.loadConfig();
     _themeMode = _parseThemeMode(config.themeMode);
@@ -876,6 +882,23 @@ class AppProvider with ChangeNotifier {
     }
   }
 
+  /// 抽奖中奖记录落盘后的同步钩子：增量统计 + 防抖推送 + 异步追加分片
+  void onLotteryRecordSaved(LotteryRecord record) {
+    _lotteryStats.addLotteryRecord(record);
+    _markCloudDirty();
+    unawaited(_appendLotteryToCloud(record));
+    _notifyIfActive();
+  }
+
+  Future<void> _appendLotteryToCloud(LotteryRecord record) async {
+    try {
+      await _cloudSyncService.appendLotteryHistory([record]);
+    } catch (e) {
+      logger.w('追加云端抽奖历史失败（本地已保存）', error: e);
+      _markCloudDirty();
+    }
+  }
+
   /// 从云端拉取历史并合并到本地
   ///
   /// [limit] 为最大拉取条数
@@ -905,7 +928,7 @@ class AppProvider with ChangeNotifier {
     try {
       final ok = await _cloudSyncService.pushCore(
         rollcallStats: _rollcallStats,
-        lotteryStats: DrawStats(), // TODO: 接入抽奖统计
+        lotteryStats: _lotteryStats,
         students: _allStudents,
       );
       if (ok) _notifyIfActive();
@@ -932,6 +955,7 @@ class AppProvider with ChangeNotifier {
       switch (resolution) {
         case ConflictResolution.useRemote:
           _rollcallStats = data.rollcallStats;
+          _lotteryStats = data.lotteryStats;
           if (data.students.isNotEmpty) {
             _allStudents = data.students;
             await _dataService.saveStudents(_allStudents);
@@ -944,6 +968,7 @@ class AppProvider with ChangeNotifier {
         case ConflictResolution.merge:
           // 聚合统计取 max（被抽次数只增不减）
           _rollcallStats.mergeMax(data.rollcallStats);
+          _lotteryStats.mergeMax(data.lotteryStats);
           // 学生名单：云端非空时以云端为准（v1 简化策略）
           if (data.students.isNotEmpty) {
             _allStudents = data.students;

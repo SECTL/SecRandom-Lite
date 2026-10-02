@@ -1,3 +1,5 @@
+import 'lottery_record.dart';
+
 /// 抽取聚合统计：每人被抽中次数
 ///
 /// 独立于历史记录存储，用于公平抽取权重计算和统计展示。
@@ -56,6 +58,30 @@ class DrawStats {
       }
     }
     return stats;
+  }
+
+  /// 抽奖记录的统计键：优先中奖人姓名，回退奖品名（人名奖池下即人名）
+  static String? lotteryStatKey(LotteryRecord record) {
+    final student = record.studentName?.trim();
+    if (student != null && student.isNotEmpty) return student;
+    final prize = record.prizeName.trim();
+    return prize.isEmpty ? null : prize;
+  }
+
+  /// 从抽奖历史重建统计（回退路径）
+  static DrawStats fromLotteryRecords(Iterable<LotteryRecord> records) {
+    final stats = DrawStats();
+    for (final record in records) {
+      stats.addLotteryRecord(record);
+    }
+    return stats;
+  }
+
+  /// 增量计入一条抽奖中奖记录
+  void addLotteryRecord(LotteryRecord record) {
+    final key = lotteryStatKey(record);
+    if (key == null) return;
+    increment(key, record.drawCount < 1 ? 1 : record.drawCount);
   }
 
   /// 序列化

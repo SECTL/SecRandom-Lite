@@ -31,7 +31,7 @@ commits:
 | 点名聚合统计 | `secrandom.stats.rollcall` | 变更防抖后推送；启动/登录时拉取 merge |
 | 抽奖聚合统计 | `secrandom.stats.lottery` | 同上；本地从抽奖历史构建，修复空覆盖 |
 | 学生名单 | `secrandom.students` | 同上 |
-| 点名历史分片 | `secrandom.history.rollcall.*` | 点名后异步追加（已有）；启动/登录时按需合并 |
+| 点名历史分片 | `secrandom.history.rollcall.*` | 点名后异步追加（已有）；启动/登录不自动合并历史，仍走历史页手动加载 |
 | 抽奖历史分片 | `secrandom.history.lottery.*` | 中奖后异步追加（新增） |
 | 同步元数据 | `secrandom.sync.meta` | 随每次 push/pull 更新（已有） |
 
@@ -39,7 +39,7 @@ commits:
 
 ### 抽奖接入
 
-- `AppProvider` 启动加载时从 `DataService.loadLotteryRecords()` 构建 `_lotteryStats`（按 `studentName` 非空记录计 `drawCount` 累加），与 `_rollcallStats` 对称。
+- `AppProvider` 启动加载时从 `DataService.loadLotteryRecords()` 构建 `_lotteryStats`，与 `_rollcallStats` 对称。计数键为 `studentName`（非空时），否则回退 `prizeName`（当前 UI 生成的记录 `studentName` 恒为 null，人名奖池下 `prizeName` 即人名，与点名统计语义对称）；每次计数累加 `drawCount`（<1 时按 1）。计数键推导收敛在 `DrawStats.lotteryStatKey`，构建与增量共用。
 - `lottery_screen` 每次 `saveLotteryRecord` 成功后调用新增的 `appProvider.onLotteryRecordSaved(record)`：增量更新 `_lotteryStats`、`_markCloudDirty()`、fire-and-forget 追加该记录到云端抽奖分片（失败仅记日志并置 dirty 走防抖兜底）。
 - `pushToCloud` 传入 `_lotteryStats` 替换 TODO 空对象；`pullFromCloud` 的 merge 分支对抽奖统计同样 `mergeMax`。
 

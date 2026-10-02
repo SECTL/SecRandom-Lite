@@ -292,8 +292,10 @@ class _LotteryScreenState extends State<LotteryScreen> {
         _isDrawing = false;
       }
 
+      final appProvider = context.read<AppProvider>();
       for (var record in records) {
         await _lotteryService.saveLotteryRecord(record);
+        appProvider.onLotteryRecordSaved(record);
       }
     } catch (e) {
       if (mounted) {
