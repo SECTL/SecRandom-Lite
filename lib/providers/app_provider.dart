@@ -1,15 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../models/app_config.dart';
+import '../models/draw_stats.dart';
 import '../models/history_record.dart';
 import '../models/student.dart';
+import '../services/cloud/cloud_sync_service.dart';
 import '../services/data_service.dart';
 import '../services/fair_draw_service.dart';
 import '../services/random_service.dart';
+import '../utils/logger.dart';
 
 class AppProvider with ChangeNotifier {
   final DataService _dataService = DataService();
   final RandomService _randomService = RandomService();
   final FairDrawService _fairDrawService = FairDrawService();
+  final CloudSyncService _cloudSyncService = CloudSyncService();
 
   List<Student> _allStudents = [];
   List<Student> _remainingStudents = [];
@@ -17,6 +23,7 @@ class AppProvider with ChangeNotifier {
   List<HistoryRecord> _history = [];
   List<String> _groups = ['1'];
   Map<String, List<String>> _classGroups = {};
+  DrawStats _rollcallStats = DrawStats();
 
   bool _isRolling = false;
   bool _isDisposed = false;
@@ -26,6 +33,12 @@ class AppProvider with ChangeNotifier {
   AnimationMode _lotteryAnimationMode = AnimationMode.auto;
   int _rollCallSessionId = 0;
   Future<void> _pendingConfigSave = Future<void>.value();
+
+  // 云同步防抖
+  bool _cloudDirty = false;
+  bool _cloudSyncEnabled = true;
+  Timer? _cloudDebounceTimer;
+  static const Duration _cloudDebounceDelay = Duration(seconds: 5);
 
   int _selectCount = 1;
   bool _fairDrawEnabled = true;
@@ -55,6 +68,8 @@ class AppProvider with ChangeNotifier {
   List<HistoryRecord> get history => _history;
   List<Student> get filteredStudents => _filteredStudents();
   List<String> get groups => _groups;
+  DrawStats get rollcallStats => _rollcallStats;
+  CloudSyncService get cloudSyncService => _cloudSyncService;
 
   AppProvider() {
     _loadData();
@@ -68,6 +83,7 @@ class AppProvider with ChangeNotifier {
   Future<void> _loadData() async {
     _allStudents = await _dataService.loadStudents();
     _history = await _dataService.loadHistory();
+    _rollcallStats = DrawStats.fromHistoryNames(_history.map((r) => r.name));
 
     final config = await _dataService.loadConfig();
     _themeMode = _parseThemeMode(config.themeMode);
@@ -220,6 +236,7 @@ class AppProvider with ChangeNotifier {
     if (changed) {
       _allStudents = updated;
       await _dataService.saveStudents(_allStudents);
+      _markCloudDirty();
       _resetRemaining();
     }
     await _saveConfig();
@@ -257,6 +274,7 @@ class AppProvider with ChangeNotifier {
     if (changed) {
       _allStudents = updated;
       await _dataService.saveStudents(_allStudents);
+      _markCloudDirty();
       _resetRemaining();
     }
     await _saveConfig();
@@ -315,6 +333,7 @@ class AppProvider with ChangeNotifier {
     if (changed) {
       _allStudents = updated;
       await _dataService.saveStudents(_allStudents);
+      _markCloudDirty();
       _resetRemaining();
     }
 
@@ -333,6 +352,7 @@ class AppProvider with ChangeNotifier {
 
     _allStudents.removeWhere((s) => s.className == className);
     await _dataService.saveStudents(_allStudents);
+      _markCloudDirty();
     _resetRemaining();
 
     _classGroups.remove(className);
@@ -479,6 +499,7 @@ class AppProvider with ChangeNotifier {
     );
 
     await _dataService.saveStudents(_allStudents);
+      _markCloudDirty();
     _resetRemaining();
     await _saveConfig();
     notifyListeners();
@@ -514,6 +535,7 @@ class AppProvider with ChangeNotifier {
     );
 
     await _dataService.saveStudents(_allStudents);
+      _markCloudDirty();
     _resetRemaining();
     notifyListeners();
   }
@@ -521,6 +543,7 @@ class AppProvider with ChangeNotifier {
   Future<void> deleteStudentFromClass(String className, int id) async {
     _allStudents.removeWhere((s) => s.className == className && s.id == id);
     await _dataService.saveStudents(_allStudents);
+      _markCloudDirty();
     _resetRemaining();
     notifyListeners();
   }
@@ -643,6 +666,7 @@ class AppProvider with ChangeNotifier {
     }
 
     await _dataService.saveStudents(_allStudents);
+      _markCloudDirty();
     _resetRemaining();
     await _saveConfig();
     notifyListeners();
@@ -657,6 +681,7 @@ class AppProvider with ChangeNotifier {
       _history = [];
     }
     await _dataService.clearHistoryRecords(className: className);
+    _markCloudDirty();
     notifyListeners();
   }
 
@@ -719,7 +744,16 @@ class AppProvider with ChangeNotifier {
         _history.removeLast();
       }
 
+      // 更新聚合统计
+      for (final student in picked) {
+        _rollcallStats.increment(student.name);
+      }
+
       await _dataService.addHistoryRecord(record);
+
+      // 标记云端待推送 + 异步追加到云端分片（不阻塞 UI）
+      _markCloudDirty();
+      unawaited(_appendRollcallToCloud(record));
     } finally {
       if (activeSessionId == _rollCallSessionId) {
         _isRolling = false;
@@ -730,9 +764,6 @@ class AppProvider with ChangeNotifier {
   }
 
   List<Student> _pickRollCallStudents(String className) {
-    final classHistory = _history
-        .where((record) => record.className == className)
-        .toList();
     final drawCandidates = _nonRepeatEnabled
         ? _remainingStudents
         : _filteredStudents();
@@ -741,7 +772,7 @@ class AppProvider with ChangeNotifier {
     if (_fairDrawEnabled) {
       picked = _fairDrawService.draw(
         candidates: drawCandidates,
-        classHistory: classHistory,
+        stats: _rollcallStats,
         count: _selectCount,
       );
       if (picked.isEmpty) {
@@ -780,9 +811,159 @@ class AppProvider with ChangeNotifier {
     );
   }
 
+  // ── 云同步 ──────────────────────────────────────────────
+
+  bool get cloudSyncEnabled => _cloudSyncEnabled;
+
+  void setCloudSyncEnabled(bool enabled) {
+    _cloudSyncEnabled = enabled;
+    if (enabled && _cloudDirty) {
+      _scheduleCloudPush();
+    } else if (!enabled) {
+      _cloudDebounceTimer?.cancel();
+      _cloudSyncService.cancelRetries();
+    }
+    _notifyIfActive();
+  }
+
+  /// 标记数据已变更，防抖后自动推送
+  void _markCloudDirty() {
+    if (!_cloudSyncEnabled) return;
+    _cloudDirty = true;
+    _scheduleCloudPush();
+  }
+
+  void _scheduleCloudPush() {
+    _cloudDebounceTimer?.cancel();
+    _cloudDebounceTimer = Timer(_cloudDebounceDelay, () {
+      if (_cloudDirty && _cloudSyncEnabled && !_isDisposed) {
+        _autoPushToCloud();
+      }
+    });
+  }
+
+  Future<void> _autoPushToCloud() async {
+    _cloudDirty = false;
+    try {
+      final ok = await pushToCloud();
+      if (!ok) {
+        // 失败后调度指数退避重试
+        _cloudSyncService.scheduleRetry(() => pushToCloud());
+      }
+    } catch (e) {
+      logger.w('自动推送失败', error: e);
+      _cloudDirty = true;
+      _cloudSyncService.scheduleRetry(() => pushToCloud());
+    }
+  }
+
+  /// 异步追加点名记录到云端分片 + 增量更新统计
+  Future<void> _appendRollcallToCloud(HistoryRecord record) async {
+    try {
+      // 追加历史到分片
+      await _cloudSyncService.appendRollcallHistory([record]);
+
+      // 增量更新被点学生的计数（PATCH field-level）
+      final delimiter = RegExp(r'[,，]');
+      for (final name in record.name.split(delimiter).map((e) => e.trim()).where((e) => e.isNotEmpty)) {
+        final count = _rollcallStats.countOf(name);
+        await _cloudSyncService.patchRollcallCount(name, count);
+      }
+    } catch (e) {
+      logger.w('追加云端历史失败（本地已保存）', error: e);
+      // 失败后标记 dirty，走防抖全量推送兜底
+      _markCloudDirty();
+    }
+  }
+
+  /// 从云端拉取历史并合并到本地
+  ///
+  /// [limit] 为最大拉取条数
+  Future<int> loadHistoryFromCloud({int limit = 500}) async {
+    try {
+      final cloudRecords = await _cloudSyncService.loadRecentRollcallHistory(limit);
+      if (cloudRecords.isEmpty) return 0;
+
+      // 按 id 去重合并（本地优先）
+      final existingIds = _history.map((r) => r.id).toSet();
+      final newRecords = cloudRecords.where((r) => !existingIds.contains(r.id)).toList();
+      if (newRecords.isEmpty) return 0;
+
+      _history.addAll(newRecords);
+      _history.sort((a, b) => b.id.compareTo(a.id)); // 按 id 倒序（最新在前）
+      await _dataService.saveHistory(_history);
+      _notifyIfActive();
+      return newRecords.length;
+    } catch (e) {
+      logger.e('从云端加载历史失败', error: e);
+      return 0;
+    }
+  }
+
+  /// 推送核心数据到云端（聚合统计 + 学生名单）
+  Future<bool> pushToCloud() async {
+    try {
+      final ok = await _cloudSyncService.pushCore(
+        rollcallStats: _rollcallStats,
+        lotteryStats: DrawStats(), // TODO: 接入抽奖统计
+        students: _allStudents,
+      );
+      if (ok) _notifyIfActive();
+      return ok;
+    } catch (e) {
+      logger.e('推送云端失败', error: e);
+      return false;
+    }
+  }
+
+  /// 从云端拉取核心数据并合并
+  ///
+  /// [conflictResolution] 为冲突解决策略（null = 自动合并）
+  Future<bool> pullFromCloud({ConflictResolution? conflictResolution}) async {
+    try {
+      final result = await _cloudSyncService.pullCore();
+      if (result == null) return false;
+
+      final (data, conflict) = result;
+
+      // 多设备冲突：由 UI 层调用方处理，这里执行对应的合并策略
+      final resolution = conflictResolution ?? ConflictResolution.merge;
+
+      switch (resolution) {
+        case ConflictResolution.useRemote:
+          _rollcallStats = data.rollcallStats;
+          if (data.students.isNotEmpty) {
+            _allStudents = data.students;
+            await _dataService.saveStudents(_allStudents);
+            _resetRemaining();
+          }
+          break;
+        case ConflictResolution.keepLocal:
+          // 不做任何变更
+          break;
+        case ConflictResolution.merge:
+          // 聚合统计取 max（被抽次数只增不减）
+          _rollcallStats.mergeMax(data.rollcallStats);
+          // 学生名单：云端非空时以云端为准（v1 简化策略）
+          if (data.students.isNotEmpty) {
+            _allStudents = data.students;
+            await _dataService.saveStudents(_allStudents);
+            _resetRemaining();
+          }
+      }
+
+      _notifyIfActive();
+      return true;
+    } catch (e) {
+      logger.e('拉取云端失败', error: e);
+      return false;
+    }
+  }
+
   @override
   void dispose() {
     _isDisposed = true;
+    _cloudDebounceTimer?.cancel();
     _rollCallSessionId++;
     super.dispose();
   }
@@ -798,6 +979,18 @@ class BatchImportResult {
   });
 
   int get totalCount => successCount + failCount;
+}
+
+/// 冲突解决策略
+enum ConflictResolution {
+  /// 合并（默认）：统计取 max，名单以云端为准
+  merge,
+
+  /// 使用云端数据：完全覆盖本地
+  useRemote,
+
+  /// 保留本地数据：不做任何变更
+  keepLocal,
 }
 
 

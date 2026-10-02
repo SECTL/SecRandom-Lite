@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import '../models/draw_stats.dart';
 import '../models/history_record.dart';
 import '../models/student.dart';
 import 'fair_weight_service.dart';
@@ -14,7 +15,8 @@ class FairDrawService {
 
   List<Student> draw({
     required List<Student> candidates,
-    required List<HistoryRecord> classHistory,
+    List<HistoryRecord>? classHistory,
+    DrawStats? stats,
     required int count,
     FairDrawSettings settings = FairDrawSettings.defaults,
   }) {
@@ -25,10 +27,9 @@ class FairDrawService {
     final drawCount = min(count, candidates.length);
 
     try {
-      final studentCounts = _fairWeightService.buildDrawCounts(
-        candidates,
-        classHistory,
-      );
+      final studentCounts = stats != null
+          ? _fairWeightService.buildDrawCountsFromStats(candidates, stats)
+          : _fairWeightService.buildDrawCounts(candidates, classHistory ?? []);
       var pool = _fairWeightService.applyAvgGapProtection(
         candidates: candidates,
         studentCounts: studentCounts,
@@ -42,6 +43,7 @@ class FairDrawService {
       final weightMap = _fairWeightService.computeCurrentWeights(
         students: pool,
         history: classHistory,
+        stats: stats,
         settings: settings,
       );
 

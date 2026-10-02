@@ -3,10 +3,10 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../providers/app_provider.dart';
-import '../providers/auth_provider.dart';
 import '../widgets/settings_layout.dart';
 import 'settings/about_settings_screen.dart';
 import 'settings/account_settings_screen.dart';
+import 'settings/cloud_sync_settings_screen.dart';
 import 'settings/data_management_screen.dart';
 import 'settings/draw_settings_screen.dart';
 import 'settings/lottery_settings_screen.dart';
@@ -108,6 +108,12 @@ class SettingsScreen extends StatelessWidget {
         icon: Icons.text_fields,
         pageBuilder: () => const PersonalizationSettingsBody(),
         routeName: '/settings/personalization',
+      ),
+      SettingItem(
+        title: '云同步',
+        icon: Icons.cloud_sync_outlined,
+        pageBuilder: () => const CloudSyncBody(),
+        routeName: '/settings/cloud',
       ),
       SettingItem(
         title: '数据管理',

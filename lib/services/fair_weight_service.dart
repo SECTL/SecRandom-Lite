@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import '../models/draw_stats.dart';
 import '../models/history_record.dart';
 import '../models/student.dart';
 
@@ -70,16 +71,29 @@ class FairWeightService {
     return counts;
   }
 
+  /// 从聚合统计构建抽取次数（不依赖历史记录完整性）
+  Map<String, int> buildDrawCountsFromStats(
+    List<Student> students,
+    DrawStats stats,
+  ) {
+    return {
+      for (final student in students) student.name: stats.countOf(student.name),
+    };
+  }
+
   Map<String, double> computeCurrentWeights({
     required List<Student> students,
-    required List<HistoryRecord> history,
+    List<HistoryRecord>? history,
+    DrawStats? stats,
     FairDrawSettings settings = FairDrawSettings.defaults,
   }) {
     if (students.isEmpty) {
       return {};
     }
 
-    final counts = buildDrawCounts(students, history);
+    final counts = stats != null
+        ? buildDrawCountsFromStats(students, stats)
+        : buildDrawCounts(students, history ?? []);
     final maxTotalCount = counts.values.isEmpty ? 0 : counts.values.reduce(max);
     final Map<String, double> weights = {};
 

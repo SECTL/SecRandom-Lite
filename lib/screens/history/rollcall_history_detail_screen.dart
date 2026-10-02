@@ -80,6 +80,35 @@ class _RollcallHistoryDetailScreenState extends State<RollcallHistoryDetailScree
     });
   }
 
+  Future<void> _loadFromCloud(AppProvider appProvider) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('从云端加载历史'),
+        content: const Text('将从云端拉取历史记录并合并到本地。\n重复记录会自动去重。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('加载')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final count = await appProvider.loadHistoryFromCloud();
+      if (!mounted) return;
+      _resetPagination();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(count > 0 ? '已从云端加载 $count 条新记录' : '没有新的云端记录')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('从云端加载历史失败')),
+      );
+    }
+  }
+
   Future<void> _clearCurrentHistory(AppProvider appProvider) async {
     final confirmed = await _showClearConfirmDialog(
       title: '确认清空',
@@ -187,9 +216,12 @@ class _RollcallHistoryDetailScreenState extends State<RollcallHistoryDetailScree
                 _clearCurrentHistory(appProvider);
               } else if (value == 'clearAll') {
                 _clearAllHistory(appProvider);
+              } else if (value == 'loadCloud') {
+                _loadFromCloud(appProvider);
               }
             },
             itemBuilder: (context) => const [
+              PopupMenuItem(value: 'loadCloud', child: Text('从云端加载历史')),
               PopupMenuItem(value: 'clearCurrent', child: Text('清空当前班级历史')),
               PopupMenuItem(value: 'clearAll', child: Text('清空全部点名历史')),
             ],
