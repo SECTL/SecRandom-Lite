@@ -69,6 +69,18 @@ class _CloudSyncBodyState extends State<CloudSyncBody> {
 
         const SizedBox(height: 16),
 
+        // 自动同步开关
+        Card(
+          child: SwitchListTile(
+            title: const Text('自动同步'),
+            subtitle: const Text('数据变更后自动上传，登录时自动与云端合并'),
+            value: appProvider.cloudSyncEnabled,
+            onChanged: (value) => appProvider.setCloudSyncEnabled(value),
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
         // 同步操作
         _buildSyncActions(context, appProvider, authProvider),
 

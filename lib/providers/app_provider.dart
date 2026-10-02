@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/app_config.dart';
 import '../models/draw_stats.dart';
 import '../models/history_record.dart';
@@ -42,6 +43,7 @@ class AppProvider with ChangeNotifier {
   bool _isLoggedIn = false;
   Timer? _cloudDebounceTimer;
   static const Duration _cloudDebounceDelay = Duration(seconds: 5);
+  static const String _kAutoSyncPrefKey = 'cloud_auto_sync_enabled';
 
   int _selectCount = 1;
   bool _fairDrawEnabled = true;
@@ -86,6 +88,9 @@ class AppProvider with ChangeNotifier {
   }
 
   Future<void> _loadData() async {
+    _cloudSyncEnabled =
+        (await SharedPreferences.getInstance()).getBool(_kAutoSyncPrefKey) ??
+            true;
     _allStudents = await _dataService.loadStudents();
     _history = await _dataService.loadHistory();
     _rollcallStats = DrawStats.fromHistoryNames(_history.map((r) => r.name));
@@ -849,6 +854,11 @@ class AppProvider with ChangeNotifier {
 
   void setCloudSyncEnabled(bool enabled) {
     _cloudSyncEnabled = enabled;
+    unawaited(
+      SharedPreferences.getInstance().then(
+        (prefs) => prefs.setBool(_kAutoSyncPrefKey, enabled),
+      ),
+    );
     if (enabled && _cloudDirty) {
       _scheduleCloudPush();
     } else if (!enabled) {
