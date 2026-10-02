@@ -318,6 +318,8 @@ class CloudSyncService {
   void scheduleRetry(Future<bool> Function() operation) {
     if (_retryCount >= _maxRetries) {
       logger.w('Max retries reached ($_maxRetries), giving up');
+      // 重置计数：本次失败批次已放弃，后续新的失败仍应有退避预算
+      _retryCount = 0;
       return;
     }
 

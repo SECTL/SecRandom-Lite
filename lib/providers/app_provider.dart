@@ -365,7 +365,7 @@ class AppProvider with ChangeNotifier {
 
     _allStudents.removeWhere((s) => s.className == className);
     await _dataService.saveStudents(_allStudents);
-      _markCloudDirty();
+    _markCloudDirty();
     _resetRemaining();
 
     _classGroups.remove(className);
@@ -512,7 +512,7 @@ class AppProvider with ChangeNotifier {
     );
 
     await _dataService.saveStudents(_allStudents);
-      _markCloudDirty();
+    _markCloudDirty();
     _resetRemaining();
     await _saveConfig();
     notifyListeners();
@@ -548,7 +548,7 @@ class AppProvider with ChangeNotifier {
     );
 
     await _dataService.saveStudents(_allStudents);
-      _markCloudDirty();
+    _markCloudDirty();
     _resetRemaining();
     notifyListeners();
   }
@@ -556,7 +556,7 @@ class AppProvider with ChangeNotifier {
   Future<void> deleteStudentFromClass(String className, int id) async {
     _allStudents.removeWhere((s) => s.className == className && s.id == id);
     await _dataService.saveStudents(_allStudents);
-      _markCloudDirty();
+    _markCloudDirty();
     _resetRemaining();
     notifyListeners();
   }
@@ -679,7 +679,7 @@ class AppProvider with ChangeNotifier {
     }
 
     await _dataService.saveStudents(_allStudents);
-      _markCloudDirty();
+    _markCloudDirty();
     _resetRemaining();
     await _saveConfig();
     notifyListeners();
@@ -868,13 +868,14 @@ class AppProvider with ChangeNotifier {
     _notifyIfActive();
   }
 
-  /// 标记数据已变更，防抖后自动推送（未登录只记脏，不调度网络）
+  /// 标记数据已变更，防抖后自动推送
+  ///
+  /// 关闭/未登录时只记脏标记不调度网络；重新开启后由
+  /// [setCloudSyncEnabled] 补推。
   void _markCloudDirty() {
-    if (!_cloudSyncEnabled) return;
     _cloudDirty = true;
-    if (_isLoggedIn) {
-      _scheduleCloudPush();
-    }
+    if (!_cloudSyncEnabled || !_isLoggedIn) return;
+    _scheduleCloudPush();
   }
 
   void _scheduleCloudPush() {
@@ -888,31 +889,36 @@ class AppProvider with ChangeNotifier {
 
   Future<void> _autoPushToCloud() async {
     if (!_cloudSyncEnabled || !_isLoggedIn || _isDisposed) return;
+    final ok = await _runPushAttempt();
+    if (!ok && _isLoggedIn && _cloudSyncEnabled) {
+      // 失败后调度指数退避重试
+      _cloudSyncService.scheduleRetry(_retryPushCloud);
+    }
+  }
+
+  /// 单次推送尝试：发起前清脏标记，失败回置（保证放弃重试后状态不丢失）
+  Future<bool> _runPushAttempt() async {
     _cloudDirty = false;
     try {
       final ok = await pushToCloud();
-      if (!ok && _isLoggedIn && _cloudSyncEnabled) {
-        // 失败后调度指数退避重试
-        _cloudSyncService.scheduleRetry(_retryPushCloud);
-      }
+      if (!ok) _cloudDirty = true;
+      return ok;
     } catch (e) {
       logger.w('自动推送失败', error: e);
       _cloudDirty = true;
-      if (_isLoggedIn && _cloudSyncEnabled) {
-        _cloudSyncService.scheduleRetry(_retryPushCloud);
-      }
+      return false;
     }
   }
 
   /// 重试用：已登出/已关闭时返回 true 停止退避循环
   Future<bool> _retryPushCloud() async {
     if (!_isLoggedIn || !_cloudSyncEnabled) return true;
-    return pushToCloud();
+    return _runPushAttempt();
   }
 
   /// 异步追加点名记录到云端分片 + 增量更新统计
   Future<void> _appendRollcallToCloud(HistoryRecord record) async {
-    if (!_isLoggedIn) return;
+    if (!_isLoggedIn || !_cloudSyncEnabled) return;
     try {
       // 追加历史到分片
       await _cloudSyncService.appendRollcallHistory([record]);
@@ -939,7 +945,7 @@ class AppProvider with ChangeNotifier {
   }
 
   Future<void> _appendLotteryToCloud(LotteryRecord record) async {
-    if (!_isLoggedIn) return;
+    if (!_isLoggedIn || !_cloudSyncEnabled) return;
     try {
       await _cloudSyncService.appendLotteryHistory([record]);
     } catch (e) {
@@ -950,21 +956,28 @@ class AppProvider with ChangeNotifier {
 
   /// 从云端拉取历史并合并到本地
   ///
-  /// [limit] 为最大拉取条数
+  /// [limit] 为最大拉取条数。
+  /// 内存中的 [_history] 点名后会被截断到 50 条，而磁盘为全量，
+  /// 因此必须以磁盘记录做去重、逐条追加到磁盘，绝不能用内存列表
+  /// [DataService.saveHistory] 整体覆写。
   Future<int> loadHistoryFromCloud({int limit = 500}) async {
     if (!_isLoggedIn) return 0;
     try {
       final cloudRecords = await _cloudSyncService.loadRecentRollcallHistory(limit);
       if (cloudRecords.isEmpty) return 0;
 
-      // 按 id 去重合并（本地优先）
-      final existingIds = _history.map((r) => r.id).toSet();
-      final newRecords = cloudRecords.where((r) => !existingIds.contains(r.id)).toList();
+      // 按磁盘全量 id 去重
+      final diskRecords = await _dataService.loadHistory();
+      final existingIds = diskRecords.map((r) => r.id).toSet();
+      final newRecords =
+          cloudRecords.where((r) => !existingIds.contains(r.id)).toList();
       if (newRecords.isEmpty) return 0;
 
+      for (final record in newRecords) {
+        await _dataService.addHistoryRecord(record);
+      }
       _history.addAll(newRecords);
       _history.sort((a, b) => b.id.compareTo(a.id)); // 按 id 倒序（最新在前）
-      await _dataService.saveHistory(_history);
       _notifyIfActive();
       return newRecords.length;
     } catch (e) {
