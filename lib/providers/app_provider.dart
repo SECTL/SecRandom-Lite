@@ -979,15 +979,19 @@ class AppProvider with ChangeNotifier {
   Future<bool> pushToCloud() async {
     if (!_isLoggedIn) return false;
     try {
-      final ok = await _cloudSyncService.pushCore(
+      // pushCore 入口同步置 syncing，创建 future 后即可通知 UI
+      final future = _cloudSyncService.pushCore(
         rollcallStats: _rollcallStats,
         lotteryStats: _lotteryStats,
         students: _allStudents,
       );
-      if (ok) _notifyIfActive();
+      _notifyIfActive();
+      final ok = await future;
+      _notifyIfActive();
       return ok;
     } catch (e) {
       logger.e('推送云端失败', error: e);
+      _notifyIfActive();
       return false;
     }
   }
@@ -1000,8 +1004,14 @@ class AppProvider with ChangeNotifier {
   Future<bool> pullFromCloud({ConflictResolution? conflictResolution}) async {
     if (!_isLoggedIn) return false;
     try {
-      final result = await _cloudSyncService.pullCore();
-      if (result == null) return false;
+      // pullCore 入口同步置 syncing，创建 future 后即可通知 UI
+      final future = _cloudSyncService.pullCore();
+      _notifyIfActive();
+      final result = await future;
+      if (result == null) {
+        _notifyIfActive();
+        return false;
+      }
 
       final (data, conflict) = result;
 
@@ -1037,6 +1047,7 @@ class AppProvider with ChangeNotifier {
       return true;
     } catch (e) {
       logger.e('拉取云端失败', error: e);
+      _notifyIfActive();
       return false;
     }
   }
