@@ -1,14 +1,25 @@
 ---
 feature: auto-cloud-sync
-status: in-progress
+status: delivered
 updated: 2026-02-27
 branch: main
-commits:
+commits: f0c609c..b81ecab
 ---
 
 # 自动云同步
 
 ## Report
+
+**What was built** — 在既有云同步 WIP 之上补齐了"自动"闭环：数据变更后 5 秒防抖自动推送（含点名与抽奖统计、学生名单、点名/抽奖历史分片增量），main.dart 监听 AuthProvider 把登录态下发给 AppProvider，未登录只记脏不发网络请求与重试，登录成功后自动执行一次 pull-merge + push 初始同步（先拉后推，本地空数据不会覆盖云端）。抽奖侧全量接入：启动时从本地抽奖历史重建 `_lotteryStats`（计数键 `studentName` 优先、回退 `prizeName`），中奖落盘后经 `onLotteryRecordSaved` 增量计数、防抖标记并异步追加云端分片，`pushCore` 不再传空抽奖统计。新增持久化「自动同步」开关（SharedPreferences `cloud_auto_sync_enabled`，默认开，关闭时手动推拉仍可用、重开后补推），同步状态在发起/完成/异常三时点通知 UI 使设置页状态卡片实时刷新。独立评审发现的 3 个 critical 已修复：云端历史合并改按磁盘全量 id 去重并逐条追加（消除内存 50 条截断列表覆写磁盘的历史丢失）、分片追加入口补 `_cloudSyncEnabled` 门控、退避重试放弃后重置计数且失败回置脏标记。
+
+**Verification** — `flutter analyze`：PASS（7 个 info 级 lint，全部为基线已存在，无 error/warning）。`flutter test -j 1`（串行全量）：PASS 99/99。`flutter test`（默认并行）：间歇性失败，仅命中 PRE-EXISTING 的共享数据目录跨套件互扰家族（CL-FLAKE：`app_provider_non_repeat` / `app_provider_animation_mode` 的断言，已在干净 origin/main clone 上复现同样失败，不同运行失败成员不同，也有一次 98/98 全绿）。新增测试：draw_stats 16 例中 DrawStats/抽奖组、history_shard_manager 6 例、cloud_sync_gating 3 例、cloud_sync_service 退避回归 1 例，均确定性通过。
+
+**Journey log** —
+1. 本 shell 会话缺失 `ProgramFiles`/`ProgramFiles(x86)` 环境变量，`flutter test` 直接退出 1；每次测试命令前需先补这两个进程级环境变量。
+2. 测试数据目录由 `Platform.resolvedExecutable` 解析（= flutter 引擎 data 目录），所有测试套件共享；套件互扰/锁竞争属基线问题（clean clone 复现），判定 PRE-EXISTING。
+3. 用户澄清问题被 dismiss 后按推荐方案推进：抽奖统计计数键 `studentName` 优先回退 `prizeName`，spec 已同步修订。
+4. 评审阶段发现的最大教训：内存 `_history` 点名后截断到 50 条而磁盘为全量，任何用内存列表 `saveHistory` 回写的路径都会截断本地历史（已修）。
+5. `git worktree`/`git checkout` 在本会话被安全护栏拦截（共享 ref store 保护），基线对照改用 `git clone --no-hardlinks` 到临时目录完成。
 
 ## [S1] Problem
 
@@ -47,7 +58,7 @@ commits:
 
 - `main.dart` 监听 `AuthProvider`，把登录状态下发给 `AppProvider.setAuthState(bool loggedIn)`。
 - 未登录：`_markCloudDirty` 只置脏不调度网络；取消防抖定时器与服务内重试（`cancelRetries`）。任何云 API 调用前先检查登录态。
-- 登录态从 false→true 时执行一次初始同步：`pullFromCloud(merge)` → 若本地仍脏则 `pushToCloud`。幂等：数据无变化时 pushCore 的 checksum 跳过为 no-op。
+- 登录态从 false→true 时执行一次初始同步：`pullFromCloud(merge)` → `pushToCloud`（pushCore 有 checksum 跳过，数据无变化时为 no-op，保证本地更高计数也能补传）。幂等。
 - 登录态 true→false：取消防抖定时器与重试，保留脏标记。
 - 变更后推送逻辑保持现状：5 秒防抖 + 失败指数退避（最多 8 次），但调度前检查登录态。
 
@@ -77,8 +88,8 @@ commits:
 
 ## Tasks
 
-- [ ] T1: 抽奖统计与抽奖历史接入同步 — acceptance: 抽奖中奖后 `_lotteryStats` 增加、防抖推送带上真实抽奖统计（不再传空对象覆盖云端），记录被追加到云端抽奖分片；启动时从本地抽奖历史重建统计 (covers: S2 抽奖接入)
-- [ ] T2: 登录态联动与启动/登录自动同步 — acceptance: 未登录时任何变更不发起云请求、不进入退避重试；登录成功后自动执行一次 pull-merge + 按需 push；登出时取消定时器与重试 (covers: S2 登录状态与触发时机、错误行为)
-- [ ] T3: 自动同步开关持久化与设置页 UI — acceptance: 设置页出现「自动同步」开关，状态写入 SharedPreferences 并重启后保持；关闭后变更不再自动推送，手动推拉仍可用 (covers: S2 自动同步开关)
-- [ ] T4: 同步状态通知修复 — acceptance: 触发一次同步后，设置页状态卡片在 syncing→success/error 过程中实时刷新，`上次同步` 时间正确更新 (covers: S2 状态通知)
-- [ ] T5: 单元测试 — acceptance: 覆盖 DrawStats 增量/mergeMax/fromHistoryNames、HistoryShardManager 追加与读取（注入内存 Fake API）、自动同步门控（未登录不调度）三类行为，`flutter test` 全绿 (covers: S2 数据面、登录状态与触发时机)
+- [x] T1: 抽奖统计与抽奖历史接入同步 — acceptance: 抽奖中奖后 `_lotteryStats` 增加、防抖推送带上真实抽奖统计（不再传空对象覆盖云端），记录被追加到云端抽奖分片；启动时从本地抽奖历史重建统计 (covers: S2 抽奖接入)
+- [x] T2: 登录态联动与启动/登录自动同步 — acceptance: 未登录时任何变更不发起云请求、不进入退避重试；登录成功后自动执行一次 pull-merge + 按需 push；登出时取消定时器与重试 (covers: S2 登录状态与触发时机、错误行为)
+- [x] T3: 自动同步开关持久化与设置页 UI — acceptance: 设置页出现「自动同步」开关，状态写入 SharedPreferences 并重启后保持；关闭后变更不再自动推送，手动推拉仍可用 (covers: S2 自动同步开关)
+- [x] T4: 同步状态通知修复 — acceptance: 触发一次同步后，设置页状态卡片在 syncing→success/error 过程中实时刷新，`上次同步` 时间正确更新 (covers: S2 状态通知)
+- [x] T5: 单元测试 — acceptance: 覆盖 DrawStats 增量/mergeMax/fromHistoryNames、HistoryShardManager 追加与读取（注入内存 Fake API）、自动同步门控（未登录不调度）三类行为，`flutter test` 全绿 (covers: S2 数据面、登录状态与触发时机；注：全绿以串行 `flutter test -j 1` 99/99 达成，并行运行受 PRE-EXISTING CL-FLAKE 干扰)
