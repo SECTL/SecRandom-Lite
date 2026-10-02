@@ -39,6 +39,7 @@ class AppProvider with ChangeNotifier {
   // 云同步防抖
   bool _cloudDirty = false;
   bool _cloudSyncEnabled = true;
+  bool _isLoggedIn = false;
   Timer? _cloudDebounceTimer;
   static const Duration _cloudDebounceDelay = Duration(seconds: 5);
 
@@ -73,6 +74,7 @@ class AppProvider with ChangeNotifier {
   DrawStats get rollcallStats => _rollcallStats;
   DrawStats get lotteryStats => _lotteryStats;
   CloudSyncService get cloudSyncService => _cloudSyncService;
+  bool get cloudLoggedIn => _isLoggedIn;
 
   AppProvider() {
     _loadData();
@@ -821,6 +823,30 @@ class AppProvider with ChangeNotifier {
 
   bool get cloudSyncEnabled => _cloudSyncEnabled;
 
+  /// 登录态下发（由 main.dart 监听 AuthProvider 转发）
+  ///
+  /// false→true：执行一次 pull-merge + push 初始同步；
+  /// true→false：取消防抖与重试，保留脏标记。
+  void setAuthState(bool loggedIn) {
+    if (loggedIn == _isLoggedIn) return;
+    _isLoggedIn = loggedIn;
+    if (loggedIn) {
+      unawaited(_initialSyncAfterLogin());
+    } else {
+      _cloudDebounceTimer?.cancel();
+      _cloudSyncService.cancelRetries();
+    }
+    _notifyIfActive();
+  }
+
+  Future<void> _initialSyncAfterLogin() async {
+    if (!_cloudSyncEnabled || _isDisposed) return;
+    // 先拉取合并，保证本地空数据不覆盖云端；pushCore 有 checksum 跳过
+    await pullFromCloud(conflictResolution: ConflictResolution.merge);
+    if (_isDisposed || !_cloudSyncEnabled || !_isLoggedIn) return;
+    await _autoPushToCloud();
+  }
+
   void setCloudSyncEnabled(bool enabled) {
     _cloudSyncEnabled = enabled;
     if (enabled && _cloudDirty) {
@@ -832,39 +858,51 @@ class AppProvider with ChangeNotifier {
     _notifyIfActive();
   }
 
-  /// 标记数据已变更，防抖后自动推送
+  /// 标记数据已变更，防抖后自动推送（未登录只记脏，不调度网络）
   void _markCloudDirty() {
     if (!_cloudSyncEnabled) return;
     _cloudDirty = true;
-    _scheduleCloudPush();
+    if (_isLoggedIn) {
+      _scheduleCloudPush();
+    }
   }
 
   void _scheduleCloudPush() {
     _cloudDebounceTimer?.cancel();
     _cloudDebounceTimer = Timer(_cloudDebounceDelay, () {
-      if (_cloudDirty && _cloudSyncEnabled && !_isDisposed) {
+      if (_cloudDirty && _cloudSyncEnabled && _isLoggedIn && !_isDisposed) {
         _autoPushToCloud();
       }
     });
   }
 
   Future<void> _autoPushToCloud() async {
+    if (!_cloudSyncEnabled || !_isLoggedIn || _isDisposed) return;
     _cloudDirty = false;
     try {
       final ok = await pushToCloud();
-      if (!ok) {
+      if (!ok && _isLoggedIn && _cloudSyncEnabled) {
         // 失败后调度指数退避重试
-        _cloudSyncService.scheduleRetry(() => pushToCloud());
+        _cloudSyncService.scheduleRetry(_retryPushCloud);
       }
     } catch (e) {
       logger.w('自动推送失败', error: e);
       _cloudDirty = true;
-      _cloudSyncService.scheduleRetry(() => pushToCloud());
+      if (_isLoggedIn && _cloudSyncEnabled) {
+        _cloudSyncService.scheduleRetry(_retryPushCloud);
+      }
     }
+  }
+
+  /// 重试用：已登出/已关闭时返回 true 停止退避循环
+  Future<bool> _retryPushCloud() async {
+    if (!_isLoggedIn || !_cloudSyncEnabled) return true;
+    return pushToCloud();
   }
 
   /// 异步追加点名记录到云端分片 + 增量更新统计
   Future<void> _appendRollcallToCloud(HistoryRecord record) async {
+    if (!_isLoggedIn) return;
     try {
       // 追加历史到分片
       await _cloudSyncService.appendRollcallHistory([record]);
@@ -891,6 +929,7 @@ class AppProvider with ChangeNotifier {
   }
 
   Future<void> _appendLotteryToCloud(LotteryRecord record) async {
+    if (!_isLoggedIn) return;
     try {
       await _cloudSyncService.appendLotteryHistory([record]);
     } catch (e) {
@@ -903,6 +942,7 @@ class AppProvider with ChangeNotifier {
   ///
   /// [limit] 为最大拉取条数
   Future<int> loadHistoryFromCloud({int limit = 500}) async {
+    if (!_isLoggedIn) return 0;
     try {
       final cloudRecords = await _cloudSyncService.loadRecentRollcallHistory(limit);
       if (cloudRecords.isEmpty) return 0;
@@ -924,7 +964,10 @@ class AppProvider with ChangeNotifier {
   }
 
   /// 推送核心数据到云端（聚合统计 + 学生名单）
+  ///
+  /// 未登录时静默跳过（不写 lastError）。
   Future<bool> pushToCloud() async {
+    if (!_isLoggedIn) return false;
     try {
       final ok = await _cloudSyncService.pushCore(
         rollcallStats: _rollcallStats,
@@ -942,7 +985,10 @@ class AppProvider with ChangeNotifier {
   /// 从云端拉取核心数据并合并
   ///
   /// [conflictResolution] 为冲突解决策略（null = 自动合并）
+  ///
+  /// 未登录时静默跳过（不写 lastError）。
   Future<bool> pullFromCloud({ConflictResolution? conflictResolution}) async {
+    if (!_isLoggedIn) return false;
     try {
       final result = await _cloudSyncService.pullCore();
       if (result == null) return false;

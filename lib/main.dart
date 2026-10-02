@@ -16,8 +16,34 @@ void main() {
   );
 }
 
-class MainApp extends StatelessWidget {
+class MainApp extends StatefulWidget {
   const MainApp({super.key});
+
+  @override
+  State<MainApp> createState() => _MainAppState();
+}
+
+class _MainAppState extends State<MainApp> {
+  late final AuthProvider _authProvider;
+  late final AppProvider _appProvider;
+  late final VoidCallback _authListener;
+
+  @override
+  void initState() {
+    super.initState();
+    _authProvider = context.read<AuthProvider>();
+    _appProvider = context.read<AppProvider>();
+    _authListener = () => _appProvider.setAuthState(_authProvider.isLoggedIn);
+    _authProvider.addListener(_authListener);
+    // 覆盖注册监听前已完成的会话恢复
+    _authListener();
+  }
+
+  @override
+  void dispose() {
+    _authProvider.removeListener(_authListener);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
