@@ -11,7 +11,9 @@ class ShardMeta {
   /// 最后一个分片中的记录数
   int lastShardCount;
 
-  int get totalRecords => (shardCount - 1) * HistoryShardManager.shardSize + lastShardCount;
+  int get totalRecords => shardCount == 0
+      ? 0
+      : (shardCount - 1) * HistoryShardManager.shardSize + lastShardCount;
 
   Map<String, dynamic> toJson() => {
         'shard_count': shardCount,
