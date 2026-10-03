@@ -40,7 +40,7 @@ class SettingsScreen extends StatelessWidget {
         routeName: '/settings/account',
         leadingBuilder: (context) {
           final authProvider = context.watch<AuthProvider>();
-          final isLoggedIn = kAccountEnabled && authProvider.isLoggedIn;
+          final isLoggedIn = authProvider.isLoggedIn;
           final userInfo = authProvider.userInfo;
 
           if (isLoggedIn && userInfo?.avatarUrl != null) {
@@ -59,6 +59,28 @@ class SettingsScreen extends StatelessWidget {
                   )
                 : const Icon(Icons.person_outline, size: 20),
           );
+        },
+        titleBuilder: (context) {
+          final authProvider = context.watch<AuthProvider>();
+          final isLoggedIn = authProvider.isLoggedIn;
+          final name =
+              isLoggedIn && authProvider.userInfo?.name.isNotEmpty == true
+                  ? authProvider.userInfo!.name
+                  : '账户';
+
+          return Text(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          );
+        },
+        subtitleBuilder: (context) {
+          final authProvider = context.watch<AuthProvider>();
+          if (authProvider.isLoggedIn) {
+            return const Text('SECTL ID、账户详情、登录状态与更多');
+          }
+
+          return const Text('登录后可同步数据、管理账户信息');
         },
       ),
       SettingItem(

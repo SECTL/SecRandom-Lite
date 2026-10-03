@@ -14,6 +14,8 @@ class DataService {
   static const String _dataDirName = 'data';
   static const String _studentsFileName = 'students.json';
   static const String _historyFileName = 'history.json';
+  static const String _syncStateFileName = 'sync_state.json';
+  static const String _syncOutboxFileName = 'sync_outbox.json';
   static const String _configFileName = 'config.json';
   static const String _configLockFileName = 'config.lock';
   static const String _rootKey = 'class_name';
@@ -68,6 +70,53 @@ class DataService {
     }
     return null;
   }
+
+  Future<Map<String, dynamic>> _readDataJson(String fileName) async {
+    try {
+      if (!_isWeb) {
+        final dirPath = await _getDataDirPath();
+        if (dirPath == null) return {};
+        final file = File(path.join(dirPath, fileName));
+        if (!await file.exists()) return {};
+        final data = await file.readAsString();
+        if (data.isEmpty) return {};
+        return json.decode(data) as Map<String, dynamic>;
+      }
+      final data = _getWebStorage(fileName);
+      if (data == null || data.isEmpty) return {};
+      return json.decode(data) as Map<String, dynamic>;
+    } catch (e) {
+      logger.e('读取 $fileName 失败', error: e);
+      return {};
+    }
+  }
+
+  Future<void> _writeDataJson(String fileName, Map<String, dynamic> data) async {
+    final encoded = const JsonEncoder.withIndent('  ').convert(data);
+    if (!_isWeb) {
+      final dirPath = await _getDataDirPath();
+      if (dirPath == null) {
+        throw UnsupportedError('File system not available on web platform');
+      }
+      final file = File(path.join(dirPath, fileName));
+      await file.writeAsString(encoded);
+    } else {
+      if (encoded.length > 1000000) {
+        logger.w('$fileName 数据量较大 (${encoded.length} 字符)');
+      }
+      _setWebStorage(fileName, encoded);
+    }
+  }
+
+  Future<Map<String, dynamic>> loadSyncState() => _readDataJson(_syncStateFileName);
+
+  Future<void> saveSyncState(Map<String, dynamic> data) =>
+      _writeDataJson(_syncStateFileName, data);
+
+  Future<Map<String, dynamic>> loadSyncOutbox() => _readDataJson(_syncOutboxFileName);
+
+  Future<void> saveSyncOutbox(Map<String, dynamic> data) =>
+      _writeDataJson(_syncOutboxFileName, data);
 
   Future<File> _getStudentsFile() async {
     final dirPath = await _getDataDirPath();
@@ -800,6 +849,14 @@ class DataService {
       logger.e('加载抽奖记录失败', error: e);
       return [];
     }
+  }
+  /// 整体覆写抽奖记录（uid 迁移/合并后落盘）
+  Future<void> saveLotteryRecords(List<LotteryRecord> records) async {
+    final dataMap = <String, dynamic>{};
+    for (final record in records) {
+      (dataMap[record.poolName] ??= <dynamic>[]).add(record.toJson());
+    }
+    await _writeDataJson('lottery_records.json', dataMap);
   }
 
   Future<void> clearLotteryRecords(String poolName) async {

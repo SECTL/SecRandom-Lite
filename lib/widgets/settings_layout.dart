@@ -11,6 +11,9 @@ class SettingItem {
   final Widget Function(BuildContext)? titleBuilder;
   final Widget Function(BuildContext)? leadingBuilder;
 
+  /// 标题下方的灰色说明文字（如账户项的描述）
+  final Widget Function(BuildContext)? subtitleBuilder;
+
   const SettingItem({
     required this.title,
     required this.icon,
@@ -20,6 +23,7 @@ class SettingItem {
     this.applyMaxWidth = true,
     this.titleBuilder,
     this.leadingBuilder,
+    this.subtitleBuilder,
   });
 }
 
@@ -117,6 +121,7 @@ class _SettingsLayoutState extends State<SettingsLayout> {
                                 : Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
+                  subtitle: item.subtitleBuilder?.call(context),
                   selected: isSelected,
                   selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.24),
                   shape: RoundedRectangleBorder(
@@ -197,6 +202,7 @@ class _SettingsLayoutState extends State<SettingsLayout> {
           title: item.titleBuilder != null
               ? item.titleBuilder!(context)
               : Text(item.title),
+          subtitle: item.subtitleBuilder?.call(context),
           trailing: const Icon(Icons.chevron_right),
           onTap: () {
             _selectedIndex = index;

@@ -202,6 +202,82 @@ class SectlCloudApi {
     return CloudStorageUsage.fromJson(_decode(response));
   }
 
+  // ── 文件操作 ──────────────────────────────────────────────
+
+  /// 上传文件（multipart/form-data），返回响应 JSON
+  Future<Map<String, dynamic>> uploadFile({
+    required List<int> bytes,
+    required String filename,
+    String mimeType = 'application/json',
+  }) async {
+    final headers = await _authHeaders();
+    headers.remove('Content-Type');
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$_baseUrl/api/cloud/upload'),
+    )
+      ..fields['client_id'] = _clientId
+      ..files.add(http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: filename,
+      ))
+      ..headers.addAll(headers);
+    final streamed = await _httpClient.send(request);
+    final response = await http.Response.fromStream(streamed);
+    _checkError(response);
+    logger.d('Cloud file upload: $filename (${bytes.length} bytes)');
+    return _decode(response);
+  }
+
+  /// 文件列表（最多 1000 条）
+  Future<List<Map<String, dynamic>>> listFiles() async {
+    final response = await _get('/api/cloud/files', {
+      'client_id': _clientId,
+      'limit': '1000',
+    });
+    final data = _decode(response);
+    return ((data['files'] as List?) ?? [])
+        .whereType<Map>()
+        .map((e) => e.map((k, v) => MapEntry(k.toString(), v)))
+        .toList();
+  }
+
+  /// 获取文件下载链接
+  Future<String> getFileDownloadUrl(String fileId) async {
+    final response = await _get('/api/cloud/files/$fileId/download', {
+      'client_id': _clientId,
+    });
+    final data = _decode(response);
+    final url = data['download_url'] as String?;
+    if (url == null || url.isEmpty) {
+      throw const CloudApiException(
+        statusCode: 500,
+        error: 'internal_error',
+        description: '下载链接缺失',
+      );
+    }
+    return url;
+  }
+
+  /// 按下载链接读取文件字节
+  Future<List<int>> downloadFileBytes(String downloadUrl) async {
+    final response = await _httpClient.get(Uri.parse(downloadUrl));
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw CloudApiException(
+        statusCode: response.statusCode,
+        error: 'download_failed',
+      );
+    }
+    return response.bodyBytes;
+  }
+
+  /// 删除文件
+  Future<void> deleteFile(String fileId) async {
+    await _delete('/api/cloud/files/$fileId', {'client_id': _clientId});
+    logger.d('Cloud file delete: $fileId');
+  }
+
   // ── 内部 HTTP 方法 ──────────────────────────────────────────
 
   Future<Map<String, String>> _authHeaders() async {

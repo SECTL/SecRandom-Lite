@@ -23,7 +23,7 @@ class MainApp extends StatefulWidget {
   State<MainApp> createState() => _MainAppState();
 }
 
-class _MainAppState extends State<MainApp> {
+class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   late final AuthProvider _authProvider;
   late final AppProvider _appProvider;
   late final VoidCallback _authListener;
@@ -31,6 +31,7 @@ class _MainAppState extends State<MainApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _authProvider = context.read<AuthProvider>();
     _appProvider = context.read<AppProvider>();
     _authListener = () => _appProvider.setAuthState(_authProvider.isLoggedIn);
@@ -41,8 +42,16 @@ class _MainAppState extends State<MainApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authProvider.removeListener(_authListener);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _appProvider.onAppResumed();
+    }
   }
 
   @override

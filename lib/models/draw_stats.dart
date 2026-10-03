@@ -46,6 +46,13 @@ class DrawStats {
     }
   }
 
+  /// 合并另一份统计，逐项求和（多设备贡献合并）
+  void mergeSum(DrawStats other) {
+    for (final entry in other._counts.entries) {
+      _counts[entry.key] = (_counts[entry.key] ?? 0) + entry.value;
+    }
+  }
+
   /// 从历史记录重建统计（回退路径）
   ///
   /// [historyNames] 为历史记录中的 name 字段列表（可能包含逗号分隔的多人）

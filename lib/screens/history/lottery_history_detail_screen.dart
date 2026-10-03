@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../models/lottery_record.dart';
 import '../../models/history_filter.dart';
+import '../../providers/app_provider.dart';
 import '../../services/lottery_service.dart';
 import '../../widgets/history/filter_row.dart';
 
@@ -135,6 +137,9 @@ class _LotteryHistoryDetailScreenState extends State<LotteryHistoryDetailScreen>
     if (confirmed != true || !mounted) return;
     try {
       await _lotteryService.clearLotteryRecords();
+      if (mounted) {
+        await context.read<AppProvider>().markLotteryCleared();
+      }
       await _loadLotteryRecords();
       if (!mounted) return;
       _resetPagination();

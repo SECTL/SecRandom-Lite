@@ -27,6 +27,14 @@ void main() {
     expect(service.hasPendingRetry, isFalse);
   });
 
+  test('未登录时 syncNow 静默跳过', () async {
+    final provider = AppProvider();
+    addTearDown(provider.dispose);
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(await provider.syncNow(), isFalse);
+    expect(provider.cloudSyncService.lastError, isNull);
+  });
+
   test('未登录时重复 setAuthState(false) 是无副作用 no-op', () async {
     final provider = AppProvider();
     addTearDown(provider.dispose);

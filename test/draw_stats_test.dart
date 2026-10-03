@@ -41,6 +41,13 @@ void main() {
       final restored = DrawStats.fromJson(stats.toJson());
       expect(restored.countOf('张三'), 2);
     });
+
+    test('mergeSum 逐项求和（多设备累加）', () {
+      final a = DrawStats({'张三': 3});
+      a.mergeSum(DrawStats({'张三': 2, '李四': 1}));
+      expect(a.countOf('张三'), 5);
+      expect(a.countOf('李四'), 1);
+    });
   });
 
   group('抽奖统计', () {

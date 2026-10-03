@@ -294,8 +294,9 @@ class _LotteryScreenState extends State<LotteryScreen> {
 
       final appProvider = context.read<AppProvider>();
       for (var record in records) {
-        await _lotteryService.saveLotteryRecord(record);
-        appProvider.onLotteryRecordSaved(record);
+        final withUid = await appProvider.prepareLotteryRecord(record);
+        await _lotteryService.saveLotteryRecord(withUid);
+        appProvider.onLotteryRecordSaved(withUid);
       }
     } catch (e) {
       if (mounted) {

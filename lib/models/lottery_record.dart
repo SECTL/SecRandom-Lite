@@ -1,5 +1,6 @@
 class LotteryRecord {
   final String id;
+  final String? uid;
   final String poolName;
   final String prizeName;
   final String? studentName;
@@ -13,6 +14,7 @@ class LotteryRecord {
 
   LotteryRecord({
     required this.id,
+    this.uid,
     required this.poolName,
     required this.prizeName,
     this.studentName,
@@ -25,9 +27,25 @@ class LotteryRecord {
     this.genderFilter,
   });
 
+  LotteryRecord copyWithUid(String value) => LotteryRecord(
+        id: id,
+        uid: value,
+        poolName: poolName,
+        prizeName: prizeName,
+        studentName: studentName,
+        groupName: groupName,
+        gender: gender,
+        drawTime: drawTime,
+        drawCount: drawCount,
+        classFilter: classFilter,
+        groupFilter: groupFilter,
+        genderFilter: genderFilter,
+      );
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      if (uid != null) 'uid': uid,
       'poolName': poolName,
       'prizeName': prizeName,
       'studentName': studentName,
@@ -44,6 +62,7 @@ class LotteryRecord {
   factory LotteryRecord.fromJson(Map<String, dynamic> json) {
     return LotteryRecord(
       id: json['id'] as String,
+      uid: json['uid'] as String?,
       poolName: json['poolName'] as String,
       prizeName: json['prizeName'] as String,
       studentName: json['studentName'] as String?,
@@ -59,6 +78,7 @@ class LotteryRecord {
 
   LotteryRecord copyWith({
     String? id,
+    String? uid,
     String? poolName,
     String? prizeName,
     String? studentName,
@@ -72,6 +92,7 @@ class LotteryRecord {
   }) {
     return LotteryRecord(
       id: id ?? this.id,
+      uid: uid ?? this.uid,
       poolName: poolName ?? this.poolName,
       prizeName: prizeName ?? this.prizeName,
       studentName: studentName ?? this.studentName,

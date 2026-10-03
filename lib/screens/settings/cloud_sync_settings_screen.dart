@@ -30,8 +30,8 @@ class CloudSyncBody extends StatefulWidget {
 }
 
 class _CloudSyncBodyState extends State<CloudSyncBody> {
-  bool _isPushing = false;
-  bool _isPulling = false;
+  bool _isSyncing = false;
+  bool _isBackupBusy = false;
   String? _statusMessage;
 
   @override
@@ -183,7 +183,7 @@ class _CloudSyncBodyState extends State<CloudSyncBody> {
     AppProvider appProvider,
     AuthProvider authProvider,
   ) {
-    final enabled = authProvider.isLoggedIn && !_isPushing && !_isPulling;
+    final enabled = authProvider.isLoggedIn && !_isSyncing;
 
     return Card(
       child: Padding(
@@ -196,40 +196,51 @@ class _CloudSyncBodyState extends State<CloudSyncBody> {
               style: Theme.of(context).textTheme.titleSmall,
             ),
             const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: enabled ? _handleSyncNow : null,
+              icon: _isSyncing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.sync),
+              label: Text(_isSyncing ? '同步中...' : '立即同步'),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '立即同步：先拉取云端并合并，再上传本地变更（含离线期间记录）',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const Divider(height: 24),
             Row(
               children: [
                 Expanded(
-                  child: FilledButton.icon(
-                    onPressed: enabled ? _handlePush : null,
-                    icon: _isPushing
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.cloud_upload),
-                    label: Text(_isPushing ? '推送中...' : '推送到云端'),
+                  child: OutlinedButton.icon(
+                    onPressed: (enabled && !_isBackupBusy)
+                        ? _handleUploadBackup
+                        : null,
+                    icon: const Icon(Icons.backup_outlined),
+                    label: const Text('上传备份'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: enabled ? _handlePull : null,
-                    icon: _isPulling
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.cloud_download),
-                    label: Text(_isPulling ? '拉取中...' : '从云端拉取'),
+                  child: OutlinedButton.icon(
+                    onPressed: (enabled && !_isBackupBusy)
+                        ? _handleRestoreBackup
+                        : null,
+                    icon: const Icon(Icons.settings_backup_restore),
+                    label: const Text('从备份恢复'),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
-              '推送：将本地数据上传到云端\n拉取：从云端下载并合并到本地',
+              '备份为完整快照，上传前替换旧备份；恢复按记录合并，不覆盖本地已有数据。',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -254,11 +265,11 @@ class _CloudSyncBodyState extends State<CloudSyncBody> {
             ),
             const SizedBox(height: 8),
             _buildInfoRow(context, Icons.people, '学生名单', '各班级学生信息'),
-            _buildInfoRow(context, Icons.bar_chart, '抽取统计', '每人被抽中次数（公平抽取依据）'),
-            _buildInfoRow(context, Icons.history, '历史记录', '点名和抽奖历史（分片存储）'),
+            _buildInfoRow(context, Icons.bar_chart, '抽取统计', '每台设备贡献求和（公平抽取依据）'),
+            _buildInfoRow(context, Icons.history, '历史记录', '每台设备独立历史流，拉取时按 uid 合并去重'),
             const SizedBox(height: 8),
             Text(
-              '公平抽取权重基于聚合统计计算，不依赖历史记录是否完整下载。',
+              '离线期间的记录会保留在本地队列，登录或恢复网络后自动补传；重复上传不会产生重复记录。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -303,129 +314,89 @@ class _CloudSyncBodyState extends State<CloudSyncBody> {
     return '${time.month}/${time.day} ${time.hour}:${time.minute.toString().padLeft(2, '0')}';
   }
 
-  Future<void> _handlePush() async {
+  Future<void> _handleSyncNow() async {
     final appProvider = context.read<AppProvider>();
     setState(() {
-      _isPushing = true;
+      _isSyncing = true;
       _statusMessage = null;
     });
 
     try {
-      final ok = await appProvider.pushToCloud();
+      final ok = await appProvider.syncNow();
       if (!mounted) return;
       setState(() {
-        _statusMessage = ok ? '推送成功' : '推送失败，请检查网络和登录状态';
+        _statusMessage = ok ? '同步完成' : '同步失败，请检查网络和登录状态';
       });
     } catch (e) {
-      logger.e('推送失败', error: e);
+      logger.e('同步失败', error: e);
       if (!mounted) return;
       setState(() {
-        _statusMessage = '推送失败: $e';
+        _statusMessage = '同步失败: $e';
       });
     } finally {
-      if (mounted) setState(() => _isPushing = false);
+      if (mounted) setState(() => _isSyncing = false);
     }
   }
 
-  Future<void> _handlePull() async {
+  Future<void> _handleUploadBackup() async {
     final appProvider = context.read<AppProvider>();
+    setState(() {
+      _isBackupBusy = true;
+      _statusMessage = null;
+    });
+    try {
+      final ok = await appProvider.uploadBackupToCloud();
+      if (!mounted) return;
+      setState(() {
+        _statusMessage = ok ? '备份已上传' : '备份上传失败，请检查存储空间和登录状态';
+      });
+    } catch (e) {
+      logger.e('备份上传失败', error: e);
+      if (!mounted) return;
+      setState(() => _statusMessage = '备份上传失败: $e');
+    } finally {
+      if (mounted) setState(() => _isBackupBusy = false);
+    }
+  }
 
-    // 确认对话框（含冲突解决选项）
-    final resolution = await showDialog<ConflictResolution>(
+  Future<void> _handleRestoreBackup() async {
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('从云端拉取'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('拉取将合并云端数据到本地。'),
-            const SizedBox(height: 8),
-            const Text('合并策略：'),
-            const SizedBox(height: 4),
-            _buildResolutionOption(
-              ctx,
-              ConflictResolution.merge,
-              '智能合并',
-              '统计取较大值，名单以云端为准（推荐）',
-            ),
-            _buildResolutionOption(
-              ctx,
-              ConflictResolution.useRemote,
-              '使用云端数据',
-              '完全覆盖本地数据',
-            ),
-            _buildResolutionOption(
-              ctx,
-              ConflictResolution.keepLocal,
-              '保留本地数据',
-              '不做任何变更',
-            ),
-          ],
-        ),
+        title: const Text('从备份恢复'),
+        content: const Text('将下载最近一次云备份并合并到本地（按记录去重，不覆盖本地已有数据）。继续？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('恢复'),
+          ),
         ],
       ),
     );
-    if (resolution == null) return;
+    if (confirmed != true || !mounted) return;
 
+    final appProvider = context.read<AppProvider>();
     setState(() {
-      _isPulling = true;
+      _isBackupBusy = true;
       _statusMessage = null;
     });
-
     try {
-      final ok = await appProvider.pullFromCloud(conflictResolution: resolution);
+      final merged = await appProvider.restoreFromCloudBackup();
       if (!mounted) return;
       setState(() {
-        _statusMessage = ok ? '拉取成功' : '拉取失败，请检查网络和登录状态';
+        _statusMessage = merged < 0 ? '云端没有可用备份' : '恢复完成，合并 $merged 条记录';
       });
     } catch (e) {
-      logger.e('拉取失败', error: e);
+      logger.e('备份恢复失败', error: e);
       if (!mounted) return;
-      setState(() {
-        _statusMessage = '拉取失败: $e';
-      });
+      setState(() => _statusMessage = '恢复失败: $e');
     } finally {
-      if (mounted) setState(() => _isPulling = false);
+      if (mounted) setState(() => _isBackupBusy = false);
     }
   }
 
-  Widget _buildResolutionOption(
-    BuildContext ctx,
-    ConflictResolution resolution,
-    String title,
-    String subtitle,
-  ) {
-    return InkWell(
-      onTap: () => Navigator.pop(ctx, resolution),
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            Icon(
-              resolution == ConflictResolution.merge
-                  ? Icons.merge_type
-                  : resolution == ConflictResolution.useRemote
-                      ? Icons.cloud_download
-                      : Icons.phone_android,
-              size: 20,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
-                  Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }

@@ -1,16 +1,8 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/auth_provider.dart';
 export '../../providers/auth_provider.dart';
-
-/// 账户功能是否启用
-/// 通过环境变量控制: flutter run --dart-define=ACCOUNT_ENABLED=true
-const bool kAccountEnabled = bool.fromEnvironment(
-  'ACCOUNT_ENABLED',
-  defaultValue: false,
-);
 
 /// AccountSettingsScreen - 账户设置页面
 ///
@@ -35,10 +27,6 @@ class AccountSettingsBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!kAccountEnabled && !kDebugMode) {
-      return _buildComingSoon(context);
-    }
-
     final authProvider = context.watch<AuthProvider>();
 
     if (authProvider.isLoading) {
@@ -109,35 +97,6 @@ class AccountSettingsBody extends StatelessWidget {
           return _buildNarrowLayout(context, userInfo, authProvider);
         }
       },
-    );
-  }
-
-  Widget _buildComingSoon(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.cloud_off_outlined,
-            size: 80,
-            color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            '账户功能暂未开放',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '敬请期待',
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
