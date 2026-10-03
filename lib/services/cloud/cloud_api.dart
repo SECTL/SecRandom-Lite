@@ -205,6 +205,9 @@ class SectlCloudApi {
   // ── 文件操作 ──────────────────────────────────────────────
 
   /// 上传文件（multipart/form-data），返回响应 JSON
+  ///
+  /// client_id 走 query：服务端会与鉴权 token 归一化后的平台比对，
+  /// 放在 multipart 字段里会因别名/规范 ID 不一致被 403。
   Future<Map<String, dynamic>> uploadFile({
     required List<int> bytes,
     required String filename,
@@ -212,11 +215,9 @@ class SectlCloudApi {
   }) async {
     final headers = await _authHeaders();
     headers.remove('Content-Type');
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse('$_baseUrl/api/cloud/upload'),
-    )
-      ..fields['client_id'] = _clientId
+    final uri = Uri.parse('$_baseUrl/api/cloud/upload')
+        .replace(queryParameters: {'client_id': _clientId});
+    final request = http.MultipartRequest('POST', uri)
       ..files.add(http.MultipartFile.fromBytes(
         'file',
         bytes,
