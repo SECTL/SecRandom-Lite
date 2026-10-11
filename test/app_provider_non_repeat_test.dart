@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:secrandom_lite/models/app_config.dart';
 import 'package:secrandom_lite/providers/app_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
@@ -50,6 +51,9 @@ void main() {
       provider.setFairDrawEnabled(false);
       provider.setNonRepeatEnabled(true);
       provider.setSelectCount(1);
+      // 并行测试文件共享磁盘 data/ 目录，其它文件可能把 config 的动画模式
+      // 写成 manualStop（startRollCall 不会产出结果）；显式钉住 none。
+      provider.setRollcallAnimationMode(AnimationMode.none);
 
       final before = provider.remainingCount;
       await provider.startRollCall();
@@ -70,6 +74,7 @@ void main() {
       provider.setFairDrawEnabled(false);
       provider.setNonRepeatEnabled(false);
       provider.setSelectCount(1);
+      provider.setRollcallAnimationMode(AnimationMode.none);
 
       final total = provider.totalCount;
       expect(provider.remainingCount, total);
@@ -92,6 +97,7 @@ void main() {
     provider.setFairDrawEnabled(false);
     provider.setNonRepeatEnabled(true);
     provider.setSelectCount(1);
+    provider.setRollcallAnimationMode(AnimationMode.none);
 
     await provider.startRollCall();
     expect(provider.remainingCount, lessThan(provider.totalCount));

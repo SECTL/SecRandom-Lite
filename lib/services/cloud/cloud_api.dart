@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 
 import '../auth/auth_config.dart';
 import '../auth/token_manager.dart';
+import '../auth/token_refresh.dart';
 import '../../utils/logger.dart';
 
 /// SECTL 云 API 异常
@@ -213,20 +214,21 @@ class SectlCloudApi {
     required String filename,
     String mimeType = 'application/json',
   }) async {
-    final headers = await _authHeaders();
-    headers.remove('Content-Type');
-    final uri = Uri.parse('$_baseUrl/api/cloud/upload')
-        .replace(queryParameters: {'client_id': _clientId});
-    final request = http.MultipartRequest('POST', uri)
-      ..files.add(http.MultipartFile.fromBytes(
-        'file',
-        bytes,
-        filename: filename,
-      ))
-      ..headers.addAll(headers);
-    final streamed = await _httpClient.send(request);
-    final response = await http.Response.fromStream(streamed);
-    _checkError(response);
+    final response = await _sendWithAuthRetry(() async {
+      final headers = await _authHeaders();
+      headers.remove('Content-Type');
+      final uri = Uri.parse('$_baseUrl/api/cloud/upload')
+          .replace(queryParameters: {'client_id': _clientId});
+      final request = http.MultipartRequest('POST', uri)
+        ..files.add(http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: filename,
+        ))
+        ..headers.addAll(headers);
+      final streamed = await _httpClient.send(request);
+      return http.Response.fromStream(streamed);
+    });
     logger.d('Cloud file upload: $filename (${bytes.length} bytes)');
     return _decode(response);
   }
@@ -296,48 +298,66 @@ class SectlCloudApi {
     };
   }
 
-  Future<http.Response> _get(String path, Map<String, String> params) async {
-    final headers = await _authHeaders();
-    final uri = Uri.parse('$_baseUrl$path').replace(queryParameters: params);
-    final response = await _httpClient.get(uri, headers: headers);
+  /// 发送请求；收到 401 时用 refresh token 换新后重放一次。
+  ///
+  /// [send] 每次调用都重新取 header，保证重放使用的是新 access token。
+  Future<http.Response> _sendWithAuthRetry(
+    Future<http.Response> Function() send,
+  ) async {
+    var response = await send();
+    if (response.statusCode == 401) {
+      final refreshed = await _refreshAccessToken();
+      if (refreshed) {
+        response = await send();
+      }
+    }
     _checkError(response);
     return response;
   }
 
-  Future<http.Response> _post(String path, Map<String, dynamic> body) async {
-    final headers = await _authHeaders();
-    final uri = Uri.parse('$_baseUrl$path');
-    final response = await _httpClient.post(
-      uri,
-      headers: headers,
-      body: jsonEncode(body),
+  /// 用本地存储的 refresh token 刷新 access token。
+  /// 刷新成功（或 singleflight 中已有进行中的刷新且成功）返回 true。
+  Future<bool> _refreshAccessToken() async {
+    final refreshToken = await _tokenManager.getRefreshToken();
+    if (refreshToken == null || refreshToken.isEmpty) return false;
+    final token = await refreshStoredToken(
+      httpClient: _httpClient,
+      tokenManager: _tokenManager,
+      refreshToken: refreshToken,
     );
-    _checkError(response);
-    return response;
+    return token != null;
   }
 
-  Future<http.Response> _patch(String path, Map<String, dynamic> body) async {
-    final headers = await _authHeaders();
-    final uri = Uri.parse('$_baseUrl$path');
-    final response = await _httpClient.patch(
-      uri,
-      headers: headers,
-      body: jsonEncode(body),
-    );
-    _checkError(response);
-    return response;
+  Future<http.Response> _get(String path, Map<String, String> params) {
+    return _sendWithAuthRetry(() async {
+      final headers = await _authHeaders();
+      final uri = Uri.parse('$_baseUrl$path').replace(queryParameters: params);
+      return _httpClient.get(uri, headers: headers);
+    });
   }
 
-  Future<http.Response> _delete(String path, Map<String, dynamic> body) async {
-    final headers = await _authHeaders();
-    final uri = Uri.parse('$_baseUrl$path');
-    final response = await _httpClient.delete(
-      uri,
-      headers: headers,
-      body: jsonEncode(body),
-    );
-    _checkError(response);
-    return response;
+  Future<http.Response> _post(String path, Map<String, dynamic> body) {
+    return _sendWithAuthRetry(() async {
+      final headers = await _authHeaders();
+      final uri = Uri.parse('$_baseUrl$path');
+      return _httpClient.post(uri, headers: headers, body: jsonEncode(body));
+    });
+  }
+
+  Future<http.Response> _patch(String path, Map<String, dynamic> body) {
+    return _sendWithAuthRetry(() async {
+      final headers = await _authHeaders();
+      final uri = Uri.parse('$_baseUrl$path');
+      return _httpClient.patch(uri, headers: headers, body: jsonEncode(body));
+    });
+  }
+
+  Future<http.Response> _delete(String path, Map<String, dynamic> body) {
+    return _sendWithAuthRetry(() async {
+      final headers = await _authHeaders();
+      final uri = Uri.parse('$_baseUrl$path');
+      return _httpClient.delete(uri, headers: headers, body: jsonEncode(body));
+    });
   }
 
   Map<String, dynamic> _decode(http.Response response) {

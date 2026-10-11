@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/app_provider.dart';
@@ -25,6 +26,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
   final LotteryService _lotteryService = LotteryService();
   List<LotteryRecord> _lotteryRecords = [];
   bool _isInitialLoading = true;
+  bool _isRefreshing = false;
+
+  /// 桌面端没有顺手的手势刷新，改用右下角按钮；移动端保留下滑刷新。
+  bool get _isMobilePlatform {
+    if (kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+  }
 
   @override
   void initState() {
@@ -41,6 +50,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     try {
       final records = await _lotteryService.loadLotteryRecords();
+      if (!mounted) return;
       final poolNames = records.map((r) => r.poolName).toSet().toList()..sort();
       setState(() {
         _lotteryRecords = records;
@@ -50,6 +60,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         _isInitialLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isInitialLoading = false;
       });
@@ -101,7 +112,59 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _refreshData() async {
-    await _loadData();
+    // 下拉刷新与按钮共用同一入口，避免重复触发并发拉取
+    if (_isRefreshing) return;
+    setState(() {
+      _isRefreshing = true;
+    });
+    try {
+      final appProvider = context.read<AppProvider>();
+      // 已登录立即拉云端（失败/未登录时内部回退为重载本地记录）
+      final result = await appProvider.refreshHistory();
+      if (!mounted) return;
+      // 刷新本页展示状态：班级/奖池选项与抽奖记录
+      await _loadData();
+      if (!mounted) return;
+      _showRefreshFeedback(appProvider, result);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+        });
+      }
+    }
+  }
+
+  void _showRefreshFeedback(
+    AppProvider appProvider,
+    HistoryRefreshResult result,
+  ) {
+    final messenger = ScaffoldMessenger.of(context);
+    if (result.errorMessage != null) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(result.errorMessage!),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+      return;
+    }
+    if (result.fromCloud) {
+      if (result.newRecords > 0) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('已从云端同步 ${result.newRecords} 条新记录')),
+        );
+      }
+      return;
+    }
+    // 未走云端：未登录或云同步关闭，已回退为刷新本地记录
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          appProvider.cloudLoggedIn ? '云同步已关闭，已刷新本地记录' : '未登录，已刷新本地记录',
+        ),
+      ),
+    );
   }
 
   @override
@@ -169,10 +232,32 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _navigateToDetail,
-        tooltip: '查看详细记录',
-        child: const Icon(Icons.list_alt),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (!_isMobilePlatform) ...[
+            FloatingActionButton(
+              heroTag: 'history_refresh_fab',
+              onPressed: _refreshData,
+              tooltip: '刷新记录',
+              child: _isRefreshing
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+            ),
+            const SizedBox(height: 12),
+          ],
+          FloatingActionButton(
+            heroTag: 'history_detail_fab',
+            onPressed: _navigateToDetail,
+            tooltip: '查看详细记录',
+            child: const Icon(Icons.list_alt),
+          ),
+        ],
       ),
     );
   }
@@ -266,12 +351,25 @@ class _HistoryScreenState extends State<HistoryScreen> {
     Map<String, Student> studentMap,
   ) {
     if (history.isEmpty) {
-      return const Center(child: Text('暂无点名历史记录'));
+      // 空态也保持可下拉：新设备登录后要能直接拉取云端
+      return RefreshIndicator(
+        onRefresh: _refreshData,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(
+              height: 240,
+              child: Center(child: Text('暂无点名历史记录，下拉可从云端同步')),
+            ),
+          ],
+        ),
+      );
     }
 
     return RefreshIndicator(
       onRefresh: _refreshData,
       child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         itemCount: history.length,
         itemBuilder: (context, index) {
@@ -287,7 +385,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Widget _buildLotteryHistoryList(List<LotteryRecord> records) {
     if (records.isEmpty) {
-      return const Center(child: Text('暂无抽奖历史记录'));
+      return RefreshIndicator(
+        onRefresh: _refreshData,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(
+              height: 240,
+              child: Center(child: Text('暂无抽奖历史记录，下拉可从云端同步')),
+            ),
+          ],
+        ),
+      );
     }
 
     final groupedRecords = _groupLotteryRecords(records);
@@ -295,6 +404,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return RefreshIndicator(
       onRefresh: _refreshData,
       child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         itemCount: groupedRecords.length,
         itemBuilder: (context, index) {

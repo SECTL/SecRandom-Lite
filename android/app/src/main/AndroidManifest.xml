@@ -36,6 +36,16 @@
                       android:pathPrefix="/callback"/>
             </intent-filter>
         </activity>
+        <service
+            android:name=".QuickSettingsTileService"
+            android:exported="true"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:icon="@drawable/ic_rollcall_tile"
+            android:label="点名">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

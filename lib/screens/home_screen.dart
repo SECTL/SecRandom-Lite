@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../services/rollcall_quick_entry_service.dart';
 import '../utils/responsive_layout_decider.dart';
 import '../widgets/control_panel.dart';
 import '../widgets/name_display.dart';
@@ -26,6 +29,32 @@ class _HomeScreenState extends State<HomeScreen> {
   static const Duration _kStateSwitchMinInterval = Duration(milliseconds: 150);
 
   int _selectedIndex = 0;
+
+  final _quickEntryService = RollCallQuickEntryService.instance;
+  StreamSubscription<void>? _openRollCallSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_quickEntryService.initialize());
+    // 悬浮窗点击或 Android 磁贴点击都落到点名页
+    _openRollCallSubscription =
+        _quickEntryService.openRollCallRequests.listen((_) {
+      if (!mounted) return;
+      if (SlidePanelOverlay.isShowing) {
+        SlidePanelOverlay.hide();
+      }
+      setState(() {
+        _selectedIndex = 0;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _openRollCallSubscription?.cancel();
+    super.dispose();
+  }
 
   final GlobalKey _rollCallContentKey = GlobalKey();
   final GlobalKey _rollCallLargePanelKey = GlobalKey();

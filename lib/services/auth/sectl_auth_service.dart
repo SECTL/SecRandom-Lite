@@ -14,10 +14,10 @@ import '../../models/auth_token.dart';
 import '../../models/pending_auth_session.dart';
 import '../../models/user_info.dart';
 import 'auth_config.dart';
-import 'client_ip.dart';
 import 'loopback_server.dart';
 import 'platform_info.dart';
 import 'token_manager.dart';
+import 'token_refresh.dart';
 import 'web_auth_navigation.dart';
 import 'web_popup_auth.dart';
 
@@ -94,20 +94,6 @@ class SectlAuthService {
       'client_id': AuthConfig.platformId,
       'redirect_uri': redirectUri,
       'code_verifier': codeVerifier,
-      'device_uuid': deviceUuid,
-      'ip_address': ipAddress,
-    };
-  }
-
-  static Map<String, dynamic> buildRefreshPayload({
-    required String refreshToken,
-    required String deviceUuid,
-    required String ipAddress,
-  }) {
-    return {
-      'grant_type': 'refresh_token',
-      'refresh_token': refreshToken,
-      'client_id': AuthConfig.platformId,
       'device_uuid': deviceUuid,
       'ip_address': ipAddress,
     };
@@ -300,7 +286,7 @@ class SectlAuthService {
   }) async {
     final url = Uri.parse('${AuthConfig.baseUrl}${AuthConfig.tokenEndpoint}');
     final deviceUuid = await _tokenManager.getOrCreateDeviceUuid();
-    final ipAddress = await _resolveIpAddress();
+    final ipAddress = await resolvePublicIpAddress(_httpClient);
     final payload = buildTokenExchangePayload(
       code: code,
       redirectUri: redirectUri,
@@ -323,29 +309,23 @@ class SectlAuthService {
     return AuthToken.fromJson(data);
   }
 
+  /// 用 refresh token 换新 access token。
+  ///
+  /// 实际网络请求委托给 [refreshStoredToken]，与云 API 的 401 自动刷新
+  /// 共享进程级 singleflight，避免并发重复刷新。
   Future<AuthToken> refreshToken(String refreshToken) async {
-    final deviceUuid = await _tokenManager.getOrCreateDeviceUuid();
-    final ipAddress = await _resolveIpAddress();
-    final url = Uri.parse('${AuthConfig.baseUrl}${AuthConfig.refreshEndpoint}');
-    final response = await _httpClient.post(
-      url,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(
-        buildRefreshPayload(
-          refreshToken: refreshToken,
-          deviceUuid: deviceUuid,
-          ipAddress: ipAddress,
-        ),
-      ),
+    final token = await refreshStoredToken(
+      httpClient: _httpClient,
+      tokenManager: _tokenManager,
+      refreshToken: refreshToken,
     );
-
-    if (response.statusCode != 200) {
-      throw _parseError(response);
+    if (token == null) {
+      throw const AuthApiException(
+        statusCode: 401,
+        error: 'invalid_grant',
+        description: 'Refresh token is invalid or has expired.',
+      );
     }
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final token = AuthToken.fromJson(data);
-    await _tokenManager.saveToken(token);
     return token;
   }
 
@@ -744,32 +724,6 @@ class SectlAuthService {
         description: 'HTTP ${response.statusCode}',
       );
     }
-  }
-
-  Future<String> _resolveIpAddress() async {
-    try {
-      final response = await _httpClient
-          .get(Uri.parse(AuthConfig.publicIpLookupUrl))
-          .timeout(const Duration(seconds: 5));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data is Map<String, dynamic>) {
-          final ip = data['ip'];
-          if (ip is String && ip.isNotEmpty) {
-            return ip;
-          }
-        }
-      }
-    } catch (_) {
-      // Fall back to local IP resolution.
-    }
-
-    final localIp = await getLocalIpAddress();
-    if (localIp != null && localIp.isNotEmpty) {
-      return localIp;
-    }
-
-    return '127.0.0.1';
   }
 
   Future<void> _cleanupRuntime({bool clearCompleter = true}) async {

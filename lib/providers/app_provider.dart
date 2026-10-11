@@ -20,7 +20,7 @@ class AppProvider with ChangeNotifier {
   final DataService _dataService = DataService();
   final RandomService _randomService = RandomService();
   final FairDrawService _fairDrawService = FairDrawService();
-  final CloudSyncService _cloudSyncService = CloudSyncService();
+  final CloudSyncService _cloudSyncService;
   DrawStats _ownRollcallStats = DrawStats();
   DrawStats _ownLotteryStats = DrawStats();
   String? _deviceId;
@@ -86,7 +86,8 @@ class AppProvider with ChangeNotifier {
   CloudSyncService get cloudSyncService => _cloudSyncService;
   bool get cloudLoggedIn => _isLoggedIn;
 
-  AppProvider() {
+  AppProvider({CloudSyncService? cloudSyncService})
+      : _cloudSyncService = cloudSyncService ?? CloudSyncService() {
     _loadData();
   }
 
@@ -1072,6 +1073,45 @@ class AppProvider with ChangeNotifier {
     return _lastPullNewRecords;
   }
 
+  /// 历史页下拉刷新：已登录且开启云同步时立即拉取云端，
+  /// 之后（含未登录、拉取失败）一律从磁盘重载本地记录。
+  ///
+  /// 本地是 Source of Truth：云端拉取先落盘，重载保证内存与磁盘一致，
+  /// 因此失败回退时展示的仍是完整本地数据。
+  Future<HistoryRefreshResult> refreshHistory() async {
+    if (_isDisposed) return const HistoryRefreshResult(fromCloud: false);
+
+    var fromCloud = false;
+    var newRecords = 0;
+    String? errorMessage;
+
+    if (_isLoggedIn && _cloudSyncEnabled) {
+      bool ok;
+      try {
+        ok = await pullFromCloud();
+      } catch (e) {
+        logger.w('下拉刷新拉取云端失败', error: e);
+        ok = false;
+      }
+      if (ok) {
+        fromCloud = true;
+        newRecords = _lastPullNewRecords;
+      } else {
+        // 离线、网络异常或服务端错误都落到这里：提示失败并回退本地
+        errorMessage = '云端同步失败，已刷新本地记录';
+      }
+    }
+
+    if (_isDisposed) return const HistoryRefreshResult(fromCloud: false);
+    _history = await _dataService.loadHistory();
+    _notifyIfActive();
+    return HistoryRefreshResult(
+      fromCloud: fromCloud,
+      newRecords: newRecords,
+      errorMessage: errorMessage,
+    );
+  }
+
   /// 推送：冲洗 outbox + own 统计贡献 + 学生名单
   ///
   /// 未登录时静默跳过（不写 lastError）。
@@ -1268,6 +1308,24 @@ class BatchImportResult {
   });
 
   int get totalCount => successCount + failCount;
+}
+
+/// 历史下拉刷新结果
+class HistoryRefreshResult {
+  const HistoryRefreshResult({
+    required this.fromCloud,
+    this.newRecords = 0,
+    this.errorMessage,
+  });
+
+  /// 是否成功从云端拉取
+  final bool fromCloud;
+
+  /// 云端新增条数（fromCloud 为 true 时有效）
+  final int newRecords;
+
+  /// 失败提示：云端拉取失败、已回退本地刷新时非空
+  final String? errorMessage;
 }
 
 
