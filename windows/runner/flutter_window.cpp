@@ -2,6 +2,7 @@
 
 #include <optional>
 
+#include "auto_start.h"
 #include "flutter/generated_plugin_registrant.h"
 #include "resource.h"
 
@@ -74,6 +75,35 @@ bool FlutterWindow::OnCreate() {
         }
       });
 
+  auto_start_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(), "secrandom_lite/auto_start",
+      &flutter::StandardMethodCodec::GetInstance());
+  // The registry is queried on every read so the toggle reflects edits made
+  // outside the app; SetEnabled reads back before reporting success.
+  auto_start_channel_->SetMethodCallHandler(
+      [](const flutter::MethodCall<flutter::EncodableValue>& call,
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+             result) {
+        if (call.method_name() == "isEnabled") {
+          result->Success(flutter::EncodableValue(auto_start::IsEnabled()));
+        } else if (call.method_name() == "setEnabled") {
+          const auto* enabled =
+              call.arguments() ? std::get_if<bool>(call.arguments()) : nullptr;
+          if (!enabled) {
+            result->Error("invalid_arguments", "Expected a bool argument");
+            return;
+          }
+          if (!auto_start::SetEnabled(*enabled)) {
+            result->Error("registry_write_failed",
+                          "Unable to update the HKCU Run value");
+            return;
+          }
+          result->Success(flutter::EncodableValue(*enabled));
+        } else {
+          result->NotImplemented();
+        }
+      });
+
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     this->Show();
   });
@@ -90,6 +120,7 @@ void FlutterWindow::OnDestroy() {
   RemoveTrayIcon();
   roll_call_window_.reset();
   quick_entry_channel_.reset();
+  auto_start_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }

@@ -46,6 +46,9 @@ class FlutterWindow : public Win32Window {
 
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       quick_entry_channel_;
+  // Reads and writes the HKCU Run value behind the auto start toggle.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      auto_start_channel_;
   std::unique_ptr<RollCallFloatingWindow> roll_call_window_;
   NOTIFYICONDATA tray_icon_{};
   UINT taskbar_created_message_ = 0;

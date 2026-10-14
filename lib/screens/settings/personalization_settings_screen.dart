@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../../models/app_config.dart';
 import '../../providers/app_provider.dart';
+import '../../services/auto_start_service.dart';
 import '../../services/rollcall_quick_entry_service.dart';
 
 /// PersonalizationSettingsScreen - 个性化设置页面
@@ -81,6 +82,7 @@ class PersonalizationSettingsBody extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         const _FloatingWindowSection(spacing: 12),
+        const _AutoStartSection(spacing: 12),
         _SettingsSectionCard(
           title: '抽奖设置',
           icon: Icons.card_giftcard,
@@ -136,6 +138,7 @@ class PersonalizationSettingsBody extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         const _FloatingWindowSection(spacing: 16),
+        const _AutoStartSection(spacing: 16),
         _SettingsSectionCard(
           title: '抽奖设置',
           icon: Icons.card_giftcard,
@@ -183,6 +186,114 @@ class _FloatingWindowSection extends StatelessWidget {
         ),
         SizedBox(height: spacing),
       ],
+    );
+  }
+}
+
+/// 开机自启开关（仅 Windows 桌面）。
+///
+/// 不受支持的平台整块不渲染，也不占位，避免留下多余间距；
+/// 卡片下方的间距跟随所在布局的卡片间距，与 `_FloatingWindowSection` 一致。
+class _AutoStartSection extends StatelessWidget {
+  const _AutoStartSection({required this.spacing});
+
+  final double spacing;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!AutoStartService.instance.supportsAutoStart) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _SettingsSectionCard(
+          title: '开机自启',
+          icon: Icons.power_settings_new,
+          children: [_AutoStartTile()],
+        ),
+        SizedBox(height: spacing),
+      ],
+    );
+  }
+}
+
+/// 开关本身自己持有状态：注册表可能被系统策略或外部工具改写，
+/// 每次读取都以注册表回填为准。
+class _AutoStartTile extends StatefulWidget {
+  const _AutoStartTile();
+
+  @override
+  State<_AutoStartTile> createState() => _AutoStartTileState();
+}
+
+class _AutoStartTileState extends State<_AutoStartTile> {
+  final _autoStartService = AutoStartService.instance;
+  bool _enabled = false;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  /// 读取失败也要恢复可操作状态，避免开关被永久禁用。
+  Future<void> _load() async {
+    var enabled = false;
+    try {
+      enabled = await _autoStartService.loadAutoStartEnabled();
+    } catch (_) {
+      enabled = false;
+    }
+    if (!mounted) return;
+    setState(() {
+      _enabled = enabled;
+      _loading = false;
+    });
+  }
+
+  Future<void> _setEnabled(bool enabled) async {
+    setState(() {
+      _loading = true;
+    });
+    try {
+      await _autoStartService.setAutoStartEnabled(enabled);
+      if (!mounted) return;
+      setState(() {
+        _enabled = enabled;
+        _loading = false;
+      });
+    } catch (_) {
+      // 写失败后回到注册表的真实值：开启失败就是关闭，
+      // 关闭失败则保持开启，而不是一律弹成关闭。
+      var actual = _enabled;
+      try {
+        actual = await _autoStartService.loadAutoStartEnabled();
+      } catch (_) {
+        actual = false;
+      }
+      if (!mounted) return;
+      setState(() {
+        _enabled = actual;
+        _loading = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('无法修改开机自启设置')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile(
+      key: const ValueKey('auto_start_switch'),
+      contentPadding: EdgeInsets.zero,
+      title: const Text('登录时启动'),
+      subtitle: const Text('登录 Windows 后自动启动本应用'),
+      value: _enabled,
+      onChanged: _loading ? null : _setEnabled,
     );
   }
 }
