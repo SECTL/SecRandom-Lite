@@ -1,0 +1,90 @@
+name: Test and Build Windows
+
+# Push-triggered verification: run the test suite and compile the Windows
+# runner on every pushed commit. The release pipeline in build.yml stays
+# manual (workflow_dispatch) so publishing remains a deliberate act.
+on:
+  push:
+    # Branches only — tag pushes are already covered by the release workflow.
+    branches: ['**']
+  workflow_dispatch:
+
+# Pushes to the same ref should not pile up Windows builds; the newest wins.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Build and test only need to read the repo.
+permissions:
+  contents: read
+
+env:
+  # Keep in sync with build.yml and the repo's `sdk: ^3.11.0` floor, which
+  # 3.41.2 (Dart 3.11.0) satisfies exactly.
+  FLUTTER_VERSION: '3.41.2'
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        run: flutter test
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      # Compiling the runner is the point of this job: it is the only place
+      # windows/runner/*.cpp is actually built.
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - name: Read app version
+        id: version
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version: *//p' pubspec.yaml | head -1 | sed 's/+.*//')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Package Windows
+        shell: pwsh
+        run: |
+          cd build/windows/x64/runner
+          Compress-Archive -Path Release/* `
+            -DestinationPath SecRandom_Lite_${{ steps.version.outputs.version }}_windows.zip
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-build
+          path: build/windows/x64/runner/SecRandom_Lite_${{ steps.version.outputs.version }}_windows.zip
