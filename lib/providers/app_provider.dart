@@ -145,7 +145,10 @@ class AppProvider with ChangeNotifier {
     }
 
     _resetRemaining();
-    notifyListeners();
+    // _loadData() 是构造函数里 fire-and-forget 启动的，没有任何调用方 await
+    // 它，因此它可能一直跑到 dispose 之后。这里必须走带防护的通知，否则会
+    // 在 ChangeNotifier 已销毁后调用 notifyListeners。
+    _notifyIfActive();
   }
 
   ThemeMode _parseThemeMode(String mode) {
