@@ -5,8 +5,7 @@ import 'package:secrandom_lite/providers/app_provider.dart';
 import 'package:secrandom_lite/services/cloud/cloud_sync_service.dart';
 import 'package:secrandom_lite/services/data_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:io';
-import 'package:path/path.dart' as path;
+import 'helpers/isolated_data_dir.dart';
 
 /// 可脚本化的云端服务：不触网，按需模拟成功/失败
 class _FakeCloudSyncService extends CloudSyncService {
@@ -39,24 +38,6 @@ class _FakeCloudSyncService extends CloudSyncService {
       true;
 }
 
-Future<void> _cleanupDataDirs() async {
-  try {
-    final rootPath = path.dirname(Platform.resolvedExecutable);
-    final dataDir = Directory(path.join(rootPath, 'data'));
-    if (await dataDir.exists()) {
-      await dataDir.delete(recursive: true);
-    }
-  } catch (_) {}
-
-  try {
-    final currentDir = Directory.current;
-    final dataDir = Directory(path.join(currentDir.path, 'data'));
-    if (await dataDir.exists()) {
-      await dataDir.delete(recursive: true);
-    }
-  } catch (_) {}
-}
-
 HistoryRecord _record(int id) => HistoryRecord(
       id: id,
       name: '刷新测试$id',
@@ -71,9 +52,10 @@ HistoryRecord _record(int id) => HistoryRecord(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  isolateDataServiceDir();
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
-    await _cleanupDataDirs();
   });
 
   test('未登录时下拉刷新静默回退本地，不触达云端', () async {

@@ -5,10 +5,13 @@ import 'package:provider/provider.dart';
 import 'package:secrandom_lite/providers/app_provider.dart';
 import 'package:secrandom_lite/screens/history/history_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'helpers/isolated_data_dir.dart';
 
 /// 历史页右下角刷新按钮：桌面端替代移动端下拉刷新。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  isolateDataServiceDir();
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});

@@ -6,6 +6,7 @@ import 'package:secrandom_lite/providers/app_provider.dart';
 import 'package:secrandom_lite/screens/home_screen.dart';
 import 'package:secrandom_lite/services/rollcall_quick_entry_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'helpers/isolated_data_dir.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -31,6 +32,8 @@ void main() {
       (_) {},
     );
   }
+
+  isolateDataServiceDir();
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});

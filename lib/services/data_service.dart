@@ -11,6 +11,14 @@ import '../models/lottery_record.dart';
 import '../utils/logger.dart';
 
 class DataService {
+  /// 测试用：覆盖数据目录。
+  ///
+  /// 默认目录由 `Platform.resolvedExecutable` 推导，而 `flutter test` 下该值
+  /// 指向 Flutter SDK 内部的测试引擎，于是所有测试文件共用同一个真实目录、
+  /// 互相污染。测试在 setUp 里把它指向各自的临时目录即可隔离；置 null 回落
+  /// 到默认推导，正常运行时不受影响。
+  static String? debugDataDirOverride;
+
   static const String _dataDirName = 'data';
   static const String _studentsFileName = 'students.json';
   static const String _historyFileName = 'history.json';
@@ -27,7 +35,15 @@ class DataService {
     if (_isWeb) {
       return null;
     }
-    
+
+    final override = debugDataDirOverride;
+    if (override != null) {
+      final dataDir = Directory(override);
+      if (!await dataDir.exists()) {
+        await dataDir.create(recursive: true);
+      }
+      return dataDir.path;
+    }
     if (Platform.isAndroid || Platform.isIOS) {
       final appDocDir = await getApplicationDocumentsDirectory();
       final dataDir = Directory(path.join(appDocDir.path, _dataDirName));

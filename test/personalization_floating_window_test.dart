@@ -7,6 +7,7 @@ import 'package:secrandom_lite/screens/settings/personalization_settings_screen.
 import 'package:secrandom_lite/screens/settings/rollcall_settings_screen.dart';
 import 'package:secrandom_lite/services/rollcall_quick_entry_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'helpers/isolated_data_dir.dart';
 
 /// 悬浮窗开关的归属：应在个性化设置，不在点名名单设置。
 ///
@@ -18,6 +19,8 @@ void main() {
 
   final supportsFloatingWindow =
       RollCallQuickEntryService.instance.supportsFloatingWindow;
+
+  isolateDataServiceDir();
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});

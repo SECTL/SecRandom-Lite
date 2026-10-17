@@ -6,6 +6,7 @@ import 'package:secrandom_lite/providers/app_provider.dart';
 import 'package:secrandom_lite/screens/settings/personalization_settings_screen.dart';
 import 'package:secrandom_lite/services/auto_start_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'helpers/isolated_data_dir.dart';
 
 /// 开机自启开关的归属：应在个性化设置，且只在 Windows 上渲染。
 ///
@@ -39,6 +40,8 @@ void main() {
       return null;
     });
   }
+
+  isolateDataServiceDir();
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});

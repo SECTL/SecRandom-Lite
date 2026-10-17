@@ -2,9 +2,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:secrandom_lite/providers/app_provider.dart';
 import 'package:secrandom_lite/services/cloud/cloud_sync_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'helpers/isolated_data_dir.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  isolateDataServiceDir();
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});

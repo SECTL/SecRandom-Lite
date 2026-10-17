@@ -4,8 +4,8 @@ import 'package:secrandom_lite/models/history_record.dart';
 import 'package:secrandom_lite/services/random_service.dart';
 import 'package:secrandom_lite/services/data_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:io';
-import 'package:path/path.dart' as path;
+
+import 'helpers/isolated_data_dir.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -51,26 +51,10 @@ void main() {
   });
 
   group('DataService Tests', () {
-    setUp(() async {
+    isolateDataServiceDir();
+
+    setUp(() {
       SharedPreferences.setMockInitialValues({});
-      try {
-        final rootPath = path.dirname(Platform.resolvedExecutable);
-        final dataDir = Directory(path.join(rootPath, 'data'));
-        if (await dataDir.exists()) {
-          await dataDir.delete(recursive: true);
-        }
-      } catch (e) {
-        // 清理测试数据失败，忽略错误
-      }
-      try {
-        final currentDir = Directory.current;
-        final dataDir = Directory(path.join(currentDir.path, 'data'));
-        if (await dataDir.exists()) {
-          await dataDir.delete(recursive: true);
-        }
-      } catch (e) {
-        // 清理测试数据失败，忽略错误
-      }
     });
 
     test('loadStudents returns initial data when empty', () async {

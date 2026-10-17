@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'helpers/isolated_data_dir.dart';
 
 Future<void> _pumpWithSize(WidgetTester tester, Size size, Widget child) async {
   await tester.binding.setSurfaceSize(size);
@@ -21,6 +22,8 @@ Future<void> _pumpWithSize(WidgetTester tester, Size size, Widget child) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  isolateDataServiceDir();
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});

@@ -6,6 +6,7 @@ import 'package:secrandom_lite/models/app_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'package:path/path.dart' as path;
+import 'helpers/isolated_data_dir.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -15,6 +16,8 @@ void main() {
     late DataExportService exportService;
     late DataService dataService;
     late String tempDir;
+
+    isolateDataServiceDir();
 
     setUp(() async {
       SharedPreferences.setMockInitialValues({});

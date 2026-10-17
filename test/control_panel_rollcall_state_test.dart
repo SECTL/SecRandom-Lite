@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:secrandom_lite/models/app_config.dart';
 import 'package:secrandom_lite/providers/app_provider.dart';
 import 'package:secrandom_lite/widgets/control_panel.dart';
+import 'helpers/isolated_data_dir.dart';
 
 class _FakeAppProvider extends AppProvider {
   _FakeAppProvider({required AnimationMode mode}) : _rollcallAnimationMode = mode;
@@ -188,6 +189,9 @@ void _expectCandidateControlsLocked(WidgetTester tester, {required bool locked})
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  isolateDataServiceDir();
+
 
   final layouts = <String, ControlPanelLayoutMode>{
     'normal': ControlPanelLayoutMode.normal,

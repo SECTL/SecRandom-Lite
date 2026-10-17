@@ -1,28 +1,9 @@
-import 'dart:io';
 
 import 'package:secrandom_lite/models/app_config.dart';
 import 'package:secrandom_lite/providers/app_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
-
-Future<void> _cleanupDataDirs() async {
-  try {
-    final rootPath = path.dirname(Platform.resolvedExecutable);
-    final dataDir = Directory(path.join(rootPath, 'data'));
-    if (await dataDir.exists()) {
-      await dataDir.delete(recursive: true);
-    }
-  } catch (_) {}
-
-  try {
-    final currentDir = Directory.current;
-    final dataDir = Directory(path.join(currentDir.path, 'data'));
-    if (await dataDir.exists()) {
-      await dataDir.delete(recursive: true);
-    }
-  } catch (_) {}
-}
+import 'helpers/isolated_data_dir.dart';
 
 Future<void> _waitForProviderLoaded(AppProvider provider) async {
   for (int i = 0; i < 120; i++) {
@@ -37,9 +18,10 @@ Future<void> _waitForProviderLoaded(AppProvider provider) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  isolateDataServiceDir();
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
-    await _cleanupDataDirs();
   });
 
   test(
