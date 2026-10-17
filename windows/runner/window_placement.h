@@ -29,6 +29,16 @@ void SaveFloatingWindowPosition(int x, int y);
 // default placement.
 bool IsUsablePoint(int x, int y, int width, int height);
 
+// True when |rect| leaves enough of itself on some monitor, as above.
+bool IsUsableRect(const RECT& rect);
+
+// Moves |window| back onto the primary work area when it currently sits off
+// screen -- the usual cause is the monitor it lived on being unplugged while
+// the app is running, which strands a window the mouse can no longer reach.
+// Returns true when the window was actually moved; minimized windows are
+// left alone because they are meant to be off screen.
+bool EnsureWindowOnScreen(HWND window);
+
 }  // namespace window_placement
 
 #endif  // RUNNER_WINDOW_PLACEMENT_H_

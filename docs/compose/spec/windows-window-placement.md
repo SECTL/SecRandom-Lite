@@ -18,6 +18,8 @@ commits:
 
 **写入时机选在「用户动作完成」的瞬间，而不是销毁时。** 主窗口在 `WM_EXITSIZEMOVE`（拖动/缩放结束时只发一次）与 `WM_CLOSE` 保存；悬浮窗在 `WM_LBUTTONUP` 且确实发生了拖动（`moved_`）时保存。这样进程被崩溃或任务管理器直接结束时位置也已经落盘。保存主窗口位置时跳过最小化状态——最小化时 `GetWindowRect` 返回约 `(-32000, -32000)`，存下来下次会把窗口恢复到没人够得到的角落。
 
+**落在屏幕外的窗口会被自动拉回屏内**，分两层：创建时在 `CreateWindow*` 成功后无条件调用一次 `EnsureWindowOnScreen()` 作为兜底（存档位置虽然已经校验过，但调用方也可能用硬编码或 `CW_USEDEFAULT` 落点）；运行期则在 `WM_DISPLAYCHANGE` 时再校验一次——应用开着时拔掉副屏，窗口会留在一块已经不存在的屏幕上，鼠标再也够不到。主窗口从托盘唤回（`RestoreMainWindow`）时也会先校验，因为用户点托盘图标往往正是因为「找不到窗口在哪」。拉回时**保持尺寸不变**，只把原点挪到主工作区左上角内缩 8px 处，让窗口仍然是同一个窗口、只是变得可达。最小化状态一律跳过——最小化的窗口本来就该在屏幕外，Windows 自己知道怎么还原，这时候去搬它反而是跟用户抢。
+
 **Verification** — 全部为原生 C++ 改动，Dart 侧无变化，因此没有新增 Dart 用例；`flutter analyze` 仍为基线 7 条 info、0 error/warning。非 ASCII 检查：改动的 6 个 `windows/runner` 源文件全部纯 ASCII（`LC_ALL=C grep -P '[^\x00-\x7F]'` 无命中），符合代码页 936 下 C4819/C2220 不得出现非 ASCII 的约束。**实际编译在 GitHub Actions 的 `build-windows` job 完成**（本会话主机为 Linux，无 MSVC/Windows SDK），该 job 为推送触发，改动推送后由 CI 验证。
 
 **Journey log** — 1. 存储选原生注册表而非 Dart `SharedPreferences`，是因为主窗口必须在 `Win32Window::Create()` 里决定位置，而那一步跑在 Flutter engine（也就是 Dart）起来之前，那一刻没有 Dart 状态可读；这与 auto-start 立下的「原生拥有的状态由注册表承载」先例一致。2. **DPI 是这个特性最容易踩的坑**：manifest 声明 `PerMonitorV2`，`GetWindowRect` 返回物理像素；而 `Win32Window::Create()` 会把传入的 origin **再乘一次** monitor 缩放系数。若把读到的物理坐标直接交给原路径，高分屏上位置会被缩放两次而飞出屏幕。因此 `Create()` 增加了「还原坐标原样写入、仅尺寸走缩放」的分支，并且缩放系数取自**真正要落脚的那台显示器**而不是默认显示器。3. 正因为上述 DPI 复杂度，「只记位置不记尺寸」的选择同时简化了实现并消除了尺寸跨缩放失真的问题——如果后续要记尺寸，必须以 DIP 存储并按目标显示器 DPI 换算，不能直接存物理像素。4. `Point` 结构体是**无符号**坐标，无法表达主显示器左侧副屏的负坐标，因此还原值没有复用 `Point`，而是在 `Win32Window` 里新增一对有符号成员 + `SetRestoredPosition(int, int)`；注册表里也按 DWORD 位模式存取有符号值。5. `SetRestoredPosition` 是**一次性**的：`Create()` 消费后立即清掉标志，避免之后的重建意外沿用陈旧坐标。6. 校验函数刻意用 `MONITOR_DEFAULTTONULL` 而非 `NEAREST`：后者会把屏幕外的点「悄悄吸附」回最近的显示器，让失效坐标看起来像生效了，掩盖问题。7. 未提供「重置窗口位置」的设置项：`IsUsablePoint()` 的回落已经兜住「窗口开到屏幕外」这一最坏情况，暂无额外逃生舱需求。
@@ -54,6 +56,15 @@ commits:
 - 保存时机：`WM_LBUTTONUP` 且 `moved_` 为真（即确实发生了拖动，而不是一次点击）。点击不改位置，因此不写注册表。
 - 悬浮窗的显隐与外观仍由设置开关与既有通道控制，本特性不改变其任何交互语义。
 
+### 落屏兜底（`EnsureWindowOnScreen(HWND)`）
+
+- 句柄无效返回 false；**最小化状态直接跳过**，最小化的窗口本来就该在屏幕外。
+- 取窗口矩形，`IsUsableRect()` 判定可用则原样返回 false（不做多余移动）。
+- 不可用时把窗口挪到主工作区左上角内缩 8px 处，**尺寸保持不变**，`SWP_NOZORDER | SWP_NOACTIVATE` 以免破坏悬浮窗的置顶与焦点。
+- 主工作区优先取 `MonitorFromPoint({0,0}, MONITOR_DEFAULTTOPRIMARY)` 的 `rcWork`，失败再退回 `SPI_GETWORKAREA`。
+- 触发点：主窗口 `Win32Window::Create()` 末尾（创建兜底）、`WM_DISPLAYCHANGE`（运行期显示器变化）、`RestoreMainWindow()`（从托盘唤回前）；悬浮窗 `Create()` 末尾与 `WM_DISPLAYCHANGE`。
+- 拉回后的坐标**不写入注册表**：那只是为了让窗口重新可达的临时修正，原位置在显示器接回来后仍然是用户想要的。
+
 ## [S3] Out of Scope
 
 - 记忆窗口尺寸（需以 DIP 存储并按目标显示器换算，见 Journey log 第 3 条）。
@@ -68,3 +79,4 @@ commits:
 - [x] T2: 主窗口位置还原与保存 — acceptance: `Create()` 在还原位置可用时原样使用物理坐标且尺寸按落脚显示器缩放，不可用时行为与改动前一致；`WM_EXITSIZEMOVE` 与 `WM_CLOSE` 保存，最小化时跳过（covers: S2 主窗口；depends: T1）
 - [x] T3: 悬浮窗位置还原与保存 — acceptance: 有可用存档时优先使用，否则退回贴主窗口右上角；拖动结束才保存，单纯点击不写注册表（covers: S2 悬浮窗；depends: T1）
 - [x] T4: 接入构建并由 CI 验证编译 — acceptance: `window_placement.cpp` 已加入 `add_executable`；改动的 runner 源文件全为 ASCII；`flutter analyze` 保持基线；实际编译由推送触发的 `build-windows` job 完成（covers: 全部；depends: T1, T2, T3）
+- [x] T5: 落在屏幕外的窗口自动拉回屏内 — acceptance: 创建后与 `WM_DISPLAYCHANGE` 时校验，不可用则保持尺寸挪到主工作区左上角内缩 8px；最小化状态跳过；从托盘唤回前同样校验；拉回坐标不写注册表（covers: S2 落屏兜底；depends: T1, T2, T3）

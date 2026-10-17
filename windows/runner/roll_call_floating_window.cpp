@@ -173,6 +173,13 @@ bool RollCallFloatingWindow::Create() {
       WS_POPUP, placed ? x : CW_USEDEFAULT, placed ? y : CW_USEDEFAULT, size_,
       size_, nullptr, nullptr, GetModuleHandle(nullptr), this);
 
+  if (window_) {
+    // The stored origin was validated, but the CW_USEDEFAULT and
+    // main-window-derived paths were not; make sure the shortcut ends up
+    // reachable wherever it was put. SWP_NOZORDER keeps it topmost.
+    window_placement::EnsureWindowOnScreen(window_);
+  }
+
   return window_ != nullptr;
 }
 
@@ -249,6 +256,14 @@ LRESULT RollCallFloatingWindow::HandleMessage(HWND window, UINT message,
     case kEnsureTopmost:
       layer_check_pending = false;
       EnsureTopmost();
+      return 0;
+    case WM_DISPLAYCHANGE:
+      // The shortcut is small and gets dragged around, so it is the window
+      // most likely to be left on a monitor that just went away. Bring it
+      // back and keep it on top.
+      if (window_placement::EnsureWindowOnScreen(window)) {
+        EnsureTopmost();
+      }
       return 0;
     case WM_WINDOWPOSCHANGED:
       if (tracked_window == window && !layer_check_pending) {

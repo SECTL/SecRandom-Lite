@@ -180,6 +180,12 @@ bool Win32Window::Create(const std::wstring& title,
 
   UpdateTheme(window);
 
+  // Belt and braces: the restored origin was validated above, but the caller
+  // may also be creating at a hardcoded or default origin, and either way the
+  // guarantee the user cares about is "it opens on screen". Cheap when the
+  // window is already fine, because EnsureWindowOnScreen returns early.
+  window_placement::EnsureWindowOnScreen(window);
+
   return OnCreate();
 }
 

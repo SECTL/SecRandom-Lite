@@ -155,6 +155,12 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     case WM_FONTCHANGE:
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
+    case WM_DISPLAYCHANGE:
+      // A monitor was unplugged or the resolution changed while the app is
+      // running, which can strand this window on a screen that no longer
+      // exists and that the mouse can no longer reach. Bring it back.
+      window_placement::EnsureWindowOnScreen(hwnd);
+      break;
     case kTrayMessage: {
       // After NIM_SETVERSION the event id arrives in LOWORD(lparam); under the
       // legacy semantics lparam is the message itself, whose LOWORD matches.
@@ -245,6 +251,10 @@ void FlutterWindow::ShowTrayMenu() {
 }
 
 void FlutterWindow::RestoreMainWindow(bool open_roll_call) {
+  // Clicking the tray icon is often exactly what a user does because they
+  // cannot find the window; if it is stranded off screen, put it back in
+  // view before showing it rather than restoring it out of sight again.
+  window_placement::EnsureWindowOnScreen(GetHandle());
   ShowWindow(GetHandle(), SW_RESTORE);
   SetForegroundWindow(GetHandle());
   if (open_roll_call && quick_entry_channel_) {

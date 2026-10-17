@@ -67,12 +67,7 @@ void WritePoint(const wchar_t* x_name, const wchar_t* y_name, int x, int y) {
 
 namespace window_placement {
 
-bool IsUsablePoint(int x, int y, int width, int height) {
-  if (width <= 0 || height <= 0) {
-    return false;
-  }
-
-  RECT rect{x, y, x + width, y + height};
+bool IsUsableRect(const RECT& rect) {
   // DEFAULTTONULL rather than NEAREST: a point that lands on no monitor at
   // all is exactly the stale case we want to reject, not quietly snap back.
   HMONITOR monitor = MonitorFromRect(&rect, MONITOR_DEFAULTTONULL);
@@ -97,6 +92,55 @@ bool IsUsablePoint(int x, int y, int width, int height) {
   constexpr int kMinVisible = 64;
   return (overlap.right - overlap.left) >= kMinVisible &&
          (overlap.bottom - overlap.top) >= kMinVisible;
+}
+
+bool IsUsablePoint(int x, int y, int width, int height) {
+  if (width <= 0 || height <= 0) {
+    return false;
+  }
+  return IsUsableRect(RECT{x, y, x + width, y + height});
+}
+
+bool EnsureWindowOnScreen(HWND window) {
+  if (!window || !IsWindow(window)) {
+    return false;
+  }
+
+  // A minimized window legitimately reports an off-screen rect, and Windows
+  // knows how to restore it. Moving it here would fight the user.
+  if (IsIconic(window)) {
+    return false;
+  }
+
+  RECT rect{};
+  if (!GetWindowRect(window, &rect)) {
+    return false;
+  }
+  if (IsUsableRect(rect)) {
+    return false;
+  }
+
+  // Reappear just inside the primary work area at the same size. The size is
+  // kept rather than shrunk so the window is recognisably the same one; only
+  // the origin has to change for it to become reachable again.
+  MONITORINFO info{};
+  info.cbSize = sizeof(info);
+  const POINT primary_origin{0, 0};
+  HMONITOR primary = MonitorFromPoint(primary_origin, MONITOR_DEFAULTTOPRIMARY);
+  if (!primary || !GetMonitorInfo(primary, &info)) {
+    if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &info.rcWork, 0)) {
+      return false;
+    }
+  }
+
+  constexpr int kMargin = 8;
+  const int width = rect.right - rect.left;
+  const int height = rect.bottom - rect.top;
+  const int x = info.rcWork.left + kMargin;
+  const int y = info.rcWork.top + kMargin;
+
+  return SetWindowPos(window, nullptr, x, y, width, height,
+                      SWP_NOZORDER | SWP_NOACTIVATE) != FALSE;
 }
 
 bool LoadMainWindowPosition(int* x, int* y) {
