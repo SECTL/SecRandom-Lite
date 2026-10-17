@@ -49,6 +49,8 @@ class AppProvider with ChangeNotifier {
   bool _cloudDirty = false;
   bool _cloudSyncEnabled = true;
   bool _isLoggedIn = false;
+  // 覆盖进行中：期间禁止并发的推送/拉取/回前台同步，避免把"半覆盖"状态推上云
+  bool _overwriteInProgress = false;
   Timer? _cloudDebounceTimer;
   static const Duration _cloudDebounceDelay = Duration(seconds: 5);
   static const String _kAutoSyncPrefKey = 'cloud_auto_sync_enabled';
@@ -956,8 +958,128 @@ class AppProvider with ChangeNotifier {
 
   Future<void> _initialSyncAfterLogin() async {
     if (!_cloudSyncEnabled || _isDisposed) return;
-    // 先拉后推：本地空数据不覆盖云端
-    await syncNow();
+
+    bool cloudHasData;
+    try {
+      cloudHasData = await _cloudSyncService.cloudHasAnyData();
+    } catch (e) {
+      // 无法判断云端状态（网络/鉴权异常）：既不覆盖本地也不上传，留待下次同步
+      logger.w('登录初始同步：检查云端数据失败，本次跳过', error: e);
+      return;
+    }
+    if (_isDisposed) return;
+
+    if (cloudHasData) {
+      // 云端已有数据：用云端严格覆盖本地（不做合并）
+      await _overwriteLocalFromCloud();
+    } else {
+      // 云端没有任何数据：上传本地数据
+      await pushToCloud();
+    }
+  }
+
+  /// 登录后云端有数据：用云端完整快照严格覆盖本地
+  ///
+  /// 覆盖学生名单、点名历史、抽奖记录与抽取统计（总视图=全部设备贡献求和，
+  /// own=本机在云端的贡献）。随后重置同步状态：ownSeq 取已有与云端本机最大
+  /// 序号的较大值以避免 uid 复用，清空拉取游标、clearedAt 与 outbox，并置
+  /// legacyUploaded 防止旧记录被再次灌入 outbox。
+  ///
+  /// 期间置 [_overwriteInProgress] 防止并发推送/拉取；数据写入失败时保留
+  /// outbox 与旧状态（不清空），使本次覆盖可视为未发生，避免半覆盖后丢失
+  /// 待上传数据。
+  Future<bool> _overwriteLocalFromCloud() async {
+    if (_isDisposed) return false;
+    _overwriteInProgress = true;
+    try {
+      // 与服务端 pushAll/flushOutbox 用同一 deviceId，避免降级到 'unknown'
+      // 导致 own 统计/ownSeq 与真实流前缀错配。
+      final deviceId = await _cloudSyncService.resolveDeviceId();
+
+      final snapshot = await _cloudSyncService.pullFullSnapshot();
+      if (snapshot == null || _isDisposed) return false;
+
+      // 1. 点名历史：整体替换（写盘后重载，保证内存与磁盘一致）
+      final cloudHistory = snapshot.rollcallRecords
+          .map((json) => HistoryRecord.fromJson(json))
+          .toList()
+        ..sort((a, b) => b.id.compareTo(a.id));
+      // 2. 抽奖记录：整体替换
+      final cloudLottery = snapshot.lotteryRecords
+          .map((json) => LotteryRecord.fromJson(json))
+          .toList();
+
+      // 先在内存/磁盘落地数据，全部成功后才重置同步状态（outbox/游标），
+      // 保证"覆盖失败=本地不变"，不会清掉待上传队列。
+      _allStudents = snapshot.students;
+      await _dataService.saveStudents(_allStudents);
+      await _dataService.saveHistory(cloudHistory);
+      _history = await _dataService.loadHistory();
+      await _dataService.saveLotteryRecords(cloudLottery);
+
+      // 3. 统计：总视图=全部设备贡献求和；own=本机在云端的贡献
+      _rollcallStats =
+          _mergeStats(DrawStats(), snapshot.rollcallContributions.values);
+      _lotteryStats =
+          _mergeStats(DrawStats(), snapshot.lotteryContributions.values);
+      _ownRollcallStats =
+          DrawStats(snapshot.rollcallContributions[deviceId] ?? const {});
+      _ownLotteryStats =
+          DrawStats(snapshot.lotteryContributions[deviceId] ?? const {});
+
+      // 4. 同步状态一次性落盘（数据已成功写入，此时才清 outbox/游标）
+      final state = await _cloudSyncService.loadState();
+      for (final kind in const ['rollcall', 'lottery']) {
+        final records = kind == 'rollcall'
+            ? snapshot.rollcallRecords
+            : snapshot.lotteryRecords;
+        final maxSeq = _maxOwnSeq(records, deviceId);
+        if (maxSeq > (state.ownSeq[kind] ?? 0)) {
+          state.ownSeq[kind] = maxSeq;
+        }
+      }
+      state.ownRollcallStats
+        ..clear()
+        ..addAll(_ownRollcallStats.toMap());
+      state.ownLotteryStats
+        ..clear()
+        ..addAll(_ownLotteryStats.toMap());
+      state.pulled.clear(); // 本地已等于云端，下次增量拉取按 uid 去重即可
+      // 覆盖是"以云端为准"，本地此前的清空语义不再适用：保留 clearedAt 会让
+      // 后续增量拉取过滤掉刚被覆盖进来的云端旧记录，与覆盖结果矛盾，故清空。
+      state.clearedAt.clear();
+      state.legacyUploaded = true;
+      await _cloudSyncService.saveState();
+      await _cloudSyncService.clearOutbox();
+
+      // 5. 应用名单到班级/筛选状态，清除待推送脏标记（本地已等于云端）
+      await _applyPulledStudents();
+      _cloudDirty = false;
+
+      _notifyIfActive();
+      return true;
+    } catch (e) {
+      // 任何一步失败：不清理 outbox/游标，本地视为未覆盖；记为同步错误
+      logger.e('云端覆盖本地失败，已保留本地待上传数据', error: e);
+      return false;
+    } finally {
+      _overwriteInProgress = false;
+    }
+  }
+
+  /// 本机（[deviceId]）在历史记录里的最大本地序号，用于覆盖后推进 ownSeq
+  ///
+  /// uid 形如 `<deviceId>:<seq>`；只统计属于本机的记录，避免拉低已有序号。
+  int _maxOwnSeq(Iterable<Map<String, dynamic>> records, String deviceId) {
+    var max = 0;
+    final prefix = '$deviceId:';
+    for (final record in records) {
+      final uid = record['uid'] as String? ?? '';
+      if (!uid.startsWith(prefix)) continue;
+      final seq = int.tryParse(uid.substring(prefix.length));
+      if (seq != null && seq > max) max = seq;
+    }
+    return max;
   }
 
   void setCloudSyncEnabled(bool enabled) {
@@ -996,7 +1118,9 @@ class AppProvider with ChangeNotifier {
   }
 
   Future<void> _autoPushToCloud() async {
-    if (!_cloudSyncEnabled || !_isLoggedIn || _isDisposed) return;
+    if (!_cloudSyncEnabled || !_isLoggedIn || _isDisposed || _overwriteInProgress) {
+      return;
+    }
     final ok = await _runPushAttempt();
     if (!ok && _isLoggedIn && _cloudSyncEnabled) {
       // 失败后调度指数退避重试
@@ -1117,9 +1241,9 @@ class AppProvider with ChangeNotifier {
 
   /// 推送：冲洗 outbox + own 统计贡献 + 学生名单
   ///
-  /// 未登录时静默跳过（不写 lastError）。
+  /// 未登录时静默跳过（不写 lastError）；覆盖进行中跳过，避免把半覆盖状态推上云。
   Future<bool> pushToCloud() async {
-    if (!_isLoggedIn) return false;
+    if (!_isLoggedIn || _overwriteInProgress) return false;
     final future = _cloudSyncService.pushAll(
       ownRollcall: _ownRollcallStats.toMap(),
       ownLottery: _ownLotteryStats.toMap(),
@@ -1133,9 +1257,9 @@ class AppProvider with ChangeNotifier {
 
   /// 拉取并合并：历史按 uid 去重、统计贡献求和、名单云端优先
   ///
-  /// 未登录时静默跳过（不写 lastError）。
+  /// 未登录时静默跳过（不写 lastError）；覆盖进行中跳过，避免与覆盖写盘交错。
   Future<bool> pullFromCloud() async {
-    if (!_isLoggedIn) return false;
+    if (!_isLoggedIn || _overwriteInProgress) return false;
     final future = _cloudSyncService.pullAll(
       existingUids: (kind) async {
         if (kind == 'rollcall') {
@@ -1189,7 +1313,7 @@ class AppProvider with ChangeNotifier {
 
   /// 立即同步：先拉后推
   Future<bool> syncNow() async {
-    if (!_isLoggedIn || !_cloudSyncEnabled) return false;
+    if (!_isLoggedIn || !_cloudSyncEnabled || _overwriteInProgress) return false;
     final pulled = await pullFromCloud();
     if (!_canSync) return pulled;
     final pushed = await pushToCloud();
@@ -1199,7 +1323,7 @@ class AppProvider with ChangeNotifier {
 
   /// 应用回到前台时调用（5 分钟节流）
   void onAppResumed() {
-    if (!_isLoggedIn || !_cloudSyncEnabled) return;
+    if (!_isLoggedIn || !_cloudSyncEnabled || _overwriteInProgress) return;
     final last = _lastForegroundSyncAt;
     if (last != null &&
         DateTime.now().difference(last) < const Duration(minutes: 5)) {

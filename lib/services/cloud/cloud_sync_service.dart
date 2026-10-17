@@ -78,6 +78,9 @@ class CloudSyncService {
     return _deviceId!;
   }
 
+  /// 本机设备 ID（供 AppProvider 在覆盖/生成 uid 时与服务端保持一致，避免降级到 'unknown'）
+  Future<String> resolveDeviceId() => _resolveDeviceId();
+
   Future<LocalSyncState> loadState() async {
     _state ??= await (await _localStore()).loadState();
     return _state!;
@@ -92,6 +95,14 @@ class CloudSyncService {
   Future<SyncOutbox> _saveOutbox(SyncOutbox outbox) async {
     await (await _localStore()).saveOutbox(outbox);
     return outbox;
+  }
+
+  /// 清空待上传队列（登录时云端覆盖本地后调用：本地待推送记录已被云端取代）
+  Future<void> clearOutbox() async {
+    final outbox = await loadOutbox();
+    outbox.rollcall.clear();
+    outbox.lottery.clear();
+    await _saveOutbox(outbox);
   }
 
   /// 分配本地序号并持久化
@@ -236,6 +247,121 @@ class CloudSyncService {
       _status = SyncStatus.error;
       _lastError = e.toString();
       logger.e('Cloud v2 pullAll failed', error: e);
+      return null;
+    }
+  }
+
+  /// 云端是否存在任何同步数据（学生名单 / 任一设备历史流 total>0 / 任一统计贡献非空）
+  ///
+  /// 供登录初始同步决策：返回 false 表示云端"没有任何数据"，此时应上传本地；
+  /// 返回 true 表示云端已有数据，应以云端严格覆盖本地。
+  Future<bool> cloudHasAnyData() async {
+    // 学生名单非空即视为有数据
+    final students = await pullStudents();
+    if (students.isNotEmpty) return true;
+
+    final registry = await _loadRegistry();
+    final devices = ((registry['devices'] as Map?)?.keys ?? <dynamic>[])
+        .map((e) => e.toString());
+
+    for (final remoteId in devices) {
+      // 任一设备任一 kind 的历史流 total>0
+      for (final kind in const ['rollcall', 'lottery']) {
+        final manager =
+            HistoryStreamManager(_api, kind: kind, deviceId: remoteId);
+        final meta = await manager.loadMeta(remoteId);
+        if (meta.total > 0) return true;
+      }
+      // 任一设备统计贡献非空
+      if ((await _statsContribution('rollcall', remoteId)).isNotEmpty) {
+        return true;
+      }
+      if ((await _statsContribution('lottery', remoteId)).isNotEmpty) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// 读取单设备单 kind 的统计贡献（不存在返回空 map）
+  Future<Map<String, int>> _statsContribution(String kind, String deviceId) async {
+    try {
+      final value = await _api.getKvValue('secrandom.stats.v2.$kind.$deviceId');
+      if (value is Map) {
+        return value.map(
+          (k, v) => MapEntry(
+            k.toString(),
+            v is int ? v : int.tryParse(v.toString()) ?? 0,
+          ),
+        );
+      }
+    } on CloudApiException catch (e) {
+      if (!e.isNotFound) rethrow;
+    }
+    return {};
+  }
+
+  /// 全量拉取云端快照（含所有设备的历史、统计与学生名单），用于严格覆盖本地。
+  ///
+  /// 与 [pullAll] 的增量游标不同，本方法从每个设备流的起点完整读取并按 uid
+  /// 去重，返回的记录即"云端的完整状态"。
+  Future<CloudFullSnapshot?> pullFullSnapshot() async {
+    _status = SyncStatus.syncing;
+    _lastError = null;
+    try {
+      final registry = await _loadRegistry();
+      final devices = ((registry['devices'] as Map?)?.keys ?? <dynamic>[])
+          .map((e) => e.toString())
+          .toList();
+
+      final rollcallByUid = <String, Map<String, dynamic>>{};
+      final lotteryByUid = <String, Map<String, dynamic>>{};
+      final rollcallContributions = <String, Map<String, int>>{};
+      final lotteryContributions = <String, Map<String, int>>{};
+
+      for (final remoteId in devices) {
+        for (final kind in const ['rollcall', 'lottery']) {
+          final manager =
+              HistoryStreamManager(_api, kind: kind, deviceId: remoteId);
+          // 完整性校验：读到的记录数必须与 meta.total 一致，否则说明分片
+          // 静默缺失（not-found 被当空）。严格覆盖宁可放弃本次同步，也不能
+          // 用不完整快照覆盖本地造成数据丢失。
+          final meta = await manager.loadMeta(remoteId);
+          final (records, _) = await manager.readFrom(remoteId, const SyncCursor());
+          if (records.length != meta.total) {
+            throw StateError(
+              '设备 $remoteId 的 $kind 流不完整：读到 ${records.length} 条，'
+              'meta 记录 ${meta.total} 条',
+            );
+          }
+          final target = kind == 'rollcall' ? rollcallByUid : lotteryByUid;
+          for (final json in records) {
+            final uid = json['uid'] as String?;
+            if (uid == null || uid.isEmpty) continue;
+            target[uid] = json;
+          }
+        }
+        rollcallContributions[remoteId] =
+            await _statsContribution('rollcall', remoteId);
+        lotteryContributions[remoteId] =
+            await _statsContribution('lottery', remoteId);
+      }
+
+      final students = await pullStudents();
+
+      _status = SyncStatus.success;
+      _lastSyncAt = DateTime.now();
+      return CloudFullSnapshot(
+        rollcallRecords: rollcallByUid.values.toList(),
+        lotteryRecords: lotteryByUid.values.toList(),
+        rollcallContributions: rollcallContributions,
+        lotteryContributions: lotteryContributions,
+        students: students,
+      );
+    } catch (e) {
+      _status = SyncStatus.error;
+      _lastError = e.toString();
+      logger.e('Cloud v2 pullFullSnapshot failed', error: e);
       return null;
     }
   }
@@ -452,5 +578,31 @@ class PullResult {
   final int newRecords;
   final Map<String, Map<String, int>> rollcallContributions;
   final Map<String, Map<String, int>> lotteryContributions;
+  final List<Student> students;
+}
+
+/// 云端完整快照：登录时云端有数据，用它严格覆盖本地
+class CloudFullSnapshot {
+  const CloudFullSnapshot({
+    required this.rollcallRecords,
+    required this.lotteryRecords,
+    required this.rollcallContributions,
+    required this.lotteryContributions,
+    required this.students,
+  });
+
+  /// 所有设备点名历史并集（按 uid 去重）
+  final List<Map<String, dynamic>> rollcallRecords;
+
+  /// 所有设备抽奖历史并集（按 uid 去重）
+  final List<Map<String, dynamic>> lotteryRecords;
+
+  /// 全部设备的点名统计贡献；key: deviceId -> 计数
+  final Map<String, Map<String, int>> rollcallContributions;
+
+  /// 全部设备的抽奖统计贡献；key: deviceId -> 计数
+  final Map<String, Map<String, int>> lotteryContributions;
+
+  /// 学生名单
   final List<Student> students;
 }
