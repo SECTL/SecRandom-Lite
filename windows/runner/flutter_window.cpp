@@ -5,6 +5,7 @@
 #include "auto_start.h"
 #include "flutter/generated_plugin_registrant.h"
 #include "resource.h"
+#include "window_placement.h"
 
 namespace {
 constexpr UINT kTrayIconId = 1;
@@ -181,7 +182,18 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
           return 0;
       }
       break;
+    case WM_EXITSIZEMOVE:
+      // Sent exactly once when the user finishes a move or resize drag.
+      // Cheaper than writing on every WM_MOVE, and unlike saving only on
+      // WM_CLOSE it survives the process being killed in between.
+      SaveMainWindowPosition();
+      break;
     case WM_CLOSE:
+      // Both close paths funnel through here -- hiding to the tray and the
+      // tray menu's real exit -- so this is the one place that always sees
+      // the position the user finished the session with. Saving here (rather
+      // than on destroy) also means a hide-to-tray exit still remembers.
+      SaveMainWindowPosition();
       if (tray_available_ && !exit_requested_) {
         ShowWindow(hwnd, SW_HIDE);
         return 0;
@@ -238,5 +250,24 @@ void FlutterWindow::RestoreMainWindow(bool open_roll_call) {
   if (open_roll_call && quick_entry_channel_) {
     quick_entry_channel_->InvokeMethod("openRollCall",
                                        std::make_unique<flutter::EncodableValue>());
+  }
+}
+
+void FlutterWindow::SaveMainWindowPosition() {
+  HWND handle = GetHandle();
+  if (!handle) {
+    return;
+  }
+
+  // A minimized window reports a rect parked at roughly (-32000, -32000);
+  // storing that would make the next launch restore into a corner no one can
+  // reach. The position is unchanged while minimized, so skipping is safe.
+  if (IsIconic(handle)) {
+    return;
+  }
+
+  RECT rect{};
+  if (GetWindowRect(handle, &rect)) {
+    window_placement::SaveMainWindowPosition(rect.left, rect.top);
   }
 }

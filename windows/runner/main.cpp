@@ -4,6 +4,7 @@
 
 #include "flutter_window.h"
 #include "utils.h"
+#include "window_placement.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
@@ -27,6 +28,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(1280, 720);
+
+  // Come back where the user left it instead of always at (10, 10). The
+  // stored origin is physical pixels and is validated against the connected
+  // monitors inside Create(), so a position from an unplugged display simply
+  // falls back to the default above.
+  int saved_x = 0;
+  int saved_y = 0;
+  if (window_placement::LoadMainWindowPosition(&saved_x, &saved_y)) {
+    window.SetRestoredPosition(saved_x, saved_y);
+  }
+
   if (!window.Create(L"SecRandom Lite", origin, size)) {
     return EXIT_FAILURE;
   }

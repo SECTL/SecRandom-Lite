@@ -37,6 +37,10 @@ class FlutterWindow : public Win32Window {
   void ShowTrayMenu();
   void RestoreMainWindow(bool open_roll_call);
 
+  // Persists the current main-window origin so the next launch reopens in
+  // place. No-op when the window is gone or minimized.
+  void SaveMainWindowPosition();
+
 
   // The project to run.
   flutter::DartProject project_;

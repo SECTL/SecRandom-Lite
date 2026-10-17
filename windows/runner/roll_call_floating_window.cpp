@@ -6,6 +6,8 @@
 #include <cmath>
 #include <utility>
 
+#include "window_placement.h"
+
 namespace {
 constexpr wchar_t kWindowClassName[] = L"SECRANDOM_ROLL_CALL_FLOATING_WINDOW";
 constexpr UINT kEnsureTopmost = WM_APP + 20;
@@ -140,24 +142,45 @@ bool RollCallFloatingWindow::Create() {
     return false;
   }
 
-  RECT main_rect{};
-  if (main_window_ && GetWindowRect(main_window_, &main_rect)) {
-    const int x = main_rect.right - size_ - 24;
-    const int y = main_rect.top + 24;
-    // The label is written as escapes because this file is compiled under a
-    // non-Unicode code page where raw CJK literals fail the build.
-    window_ = CreateWindowEx(
-        WS_EX_TOPMOST | WS_EX_TOOLWINDOW, kWindowClassName,
-        L"\x70B9\x540D", WS_POPUP, x, y, size_, size_, nullptr,
-        nullptr, GetModuleHandle(nullptr), this);
+  // Restore first: the user put it somewhere on purpose, and that beats
+  // anchoring it to wherever the main window happens to be now. The stored
+  // origin is validated because a saved spot can outlive the monitor it was
+  // placed on.
+  int x = 0;
+  int y = 0;
+  bool placed = false;
+
+  int saved_x = 0;
+  int saved_y = 0;
+  if (window_placement::LoadFloatingWindowPosition(&saved_x, &saved_y) &&
+      window_placement::IsUsablePoint(saved_x, saved_y, size_, size_)) {
+    x = saved_x;
+    y = saved_y;
+    placed = true;
   } else {
-    window_ = CreateWindowEx(
-        WS_EX_TOPMOST | WS_EX_TOOLWINDOW, kWindowClassName,
-        L"\x70B9\x540D", WS_POPUP, CW_USEDEFAULT, CW_USEDEFAULT, size_,
-        size_, nullptr, nullptr, GetModuleHandle(nullptr), this);
+    RECT main_rect{};
+    if (main_window_ && GetWindowRect(main_window_, &main_rect)) {
+      x = main_rect.right - size_ - 24;
+      y = main_rect.top + 24;
+      placed = true;
+    }
   }
 
+  // The label is written as escapes because this file is compiled under a
+  // non-Unicode code page where raw CJK literals fail the build.
+  window_ = CreateWindowEx(
+      WS_EX_TOPMOST | WS_EX_TOOLWINDOW, kWindowClassName, L"\x70B9\x540D",
+      WS_POPUP, placed ? x : CW_USEDEFAULT, placed ? y : CW_USEDEFAULT, size_,
+      size_, nullptr, nullptr, GetModuleHandle(nullptr), this);
+
   return window_ != nullptr;
+}
+
+void RollCallFloatingWindow::SavePosition(HWND window) {
+  RECT rect{};
+  if (window && GetWindowRect(window, &rect)) {
+    window_placement::SaveFloatingWindowPosition(rect.left, rect.top);
+  }
 }
 
 void RollCallFloatingWindow::Paint(HWND window, HDC device_context) {
@@ -284,6 +307,10 @@ LRESULT RollCallFloatingWindow::HandleMessage(HWND window, UINT message,
           if (opened_callback_) {
             opened_callback_();
           }
+        } else {
+          // The drag finished with the window somewhere new; remember it so
+          // the next show lands there instead of next to the main window.
+          SavePosition(window);
         }
       }
       return 0;

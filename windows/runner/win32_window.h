@@ -52,6 +52,11 @@ class Win32Window {
   // If true, closing this window will quit the application.
   void SetQuitOnClose(bool quit_on_close);
 
+  // Sets the physical-pixel origin to restore on the next Create(). Consumed
+  // once: Create() validates it against the connected monitors and falls back
+  // to |origin| when the stored point is no longer usable.
+  void SetRestoredPosition(int x, int y);
+
   // Return a RECT representing the bounds of the current client area.
   RECT GetClientArea();
 
@@ -91,6 +96,13 @@ class Win32Window {
   static void UpdateTheme(HWND const window);
 
   bool quit_on_close_ = false;
+
+  // Physical-pixel origin to restore on the next Create(). Separate from
+  // Point because that struct holds unsigned coordinates, which cannot
+  // express a monitor laid out to the left of the primary.
+  bool has_restored_position_ = false;
+  int restored_x_ = 0;
+  int restored_y_ = 0;
 
   // window handle for top level window.
   HWND window_handle_ = nullptr;

@@ -4,6 +4,7 @@
 #include <flutter_windows.h>
 
 #include "resource.h"
+#include "window_placement.h"
 
 namespace {
 
@@ -128,15 +129,48 @@ bool Win32Window::Create(const std::wstring& title,
   const wchar_t* window_class =
       WindowClassRegistrar::GetInstance()->GetWindowClass();
 
-  const POINT target_point = {static_cast<LONG>(origin.x),
-                              static_cast<LONG>(origin.y)};
+  // A restored origin is already physical pixels (it was read back with
+  // GetWindowRect under PerMonitorV2), so it must be applied verbatim. Only
+  // the size is scaled, and it is scaled for the monitor that will actually
+  // host the window rather than the default one.
+  bool restore_applied = false;
+  int create_x = static_cast<int>(origin.x);
+  int create_y = static_cast<int>(origin.y);
+
+  if (has_restored_position_) {
+    const POINT restored_point = {restored_x_, restored_y_};
+    HMONITOR restored_monitor =
+        MonitorFromPoint(restored_point, MONITOR_DEFAULTTONULL);
+    UINT restored_dpi =
+        restored_monitor ? FlutterDesktopGetDpiForMonitor(restored_monitor) : 96;
+    const double restored_scale = restored_dpi / 96.0;
+    if (window_placement::IsUsablePoint(restored_x_, restored_y_,
+                                        Scale(size.width, restored_scale),
+                                        Scale(size.height, restored_scale))) {
+      restore_applied = true;
+      create_x = restored_x_;
+      create_y = restored_y_;
+    }
+    // One-shot either way: after this, the caller-supplied origin is what a
+    // later re-create should use again.
+    has_restored_position_ = false;
+  }
+
+  // Resolve the monitor from the point that will actually be used, so the
+  // default path keeps its original behaviour and the restored path gets the
+  // DPI of the screen it is landing on.
+  const POINT target_point = {create_x, create_y};
   HMONITOR monitor = MonitorFromPoint(target_point, MONITOR_DEFAULTTONEAREST);
   UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
   double scale_factor = dpi / 96.0;
 
+  if (!restore_applied) {
+    create_x = Scale(origin.x, scale_factor);
+    create_y = Scale(origin.y, scale_factor);
+  }
+
   HWND window = CreateWindow(
-      window_class, title.c_str(), WS_OVERLAPPEDWINDOW,
-      Scale(origin.x, scale_factor), Scale(origin.y, scale_factor),
+      window_class, title.c_str(), WS_OVERLAPPEDWINDOW, create_x, create_y,
       Scale(size.width, scale_factor), Scale(size.height, scale_factor),
       nullptr, nullptr, GetModuleHandle(nullptr), this);
 
@@ -261,6 +295,12 @@ HWND Win32Window::GetHandle() {
 
 void Win32Window::SetQuitOnClose(bool quit_on_close) {
   quit_on_close_ = quit_on_close;
+}
+
+void Win32Window::SetRestoredPosition(int x, int y) {
+  has_restored_position_ = true;
+  restored_x_ = x;
+  restored_y_ = y;
 }
 
 bool Win32Window::OnCreate() {

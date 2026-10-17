@@ -34,6 +34,9 @@ class RollCallFloatingWindow {
   bool Create();
   void Paint(HWND window, HDC device_context);
   void ActivateMainWindow();
+
+  // Persists the window origin after the user finishes dragging it.
+  void SavePosition(HWND window);
   void StartLayerTracking();
   void StopLayerTracking();
   void EnsureTopmost();
