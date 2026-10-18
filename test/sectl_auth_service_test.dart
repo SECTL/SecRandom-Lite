@@ -355,5 +355,24 @@ void main() {
         expect(await tokenManager.getUserInfo(), isNull);
       },
     );
+
+    test('cancelLogin clears pending session without active completer', () async {
+      final store = InMemoryKeyValueStore();
+      final tokenManager = TokenManager(store: store);
+      await tokenManager.savePendingAuthSession(
+        PendingAuthSession(
+          state: 'state-cancel',
+          codeVerifier: 'cancel-verifier',
+          targetPlatform: PendingAuthTargetPlatform.windows,
+          redirectUri: 'http://127.0.0.1/callback',
+          createdAt: DateTime.now(),
+        ),
+      );
+
+      final service = SectlAuthService(tokenManager: tokenManager);
+      await service.cancelLogin();
+
+      expect(await tokenManager.getPendingAuthSession(), isNull);
+    });
   });
 }

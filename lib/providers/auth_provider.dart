@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../models/user_info.dart';
+import '../services/auth/auth_error_messages.dart';
 import '../services/auth/sectl_auth_service.dart';
+
+export '../services/auth/auth_error_messages.dart';
+export '../services/auth/sectl_auth_service.dart' show LoginCancelledException;
 
 class AuthProvider with ChangeNotifier {
   AuthProvider({SectlAuthService? authService})
@@ -13,11 +17,15 @@ class AuthProvider with ChangeNotifier {
 
   UserInfo? _userInfo;
   bool _isLoading = false;
+  bool _isLoggingIn = false;
   String? _error;
 
   UserInfo? get userInfo => _userInfo;
   bool get isLoggedIn => _userInfo != null;
+
+  /// 会话恢复 / 退出登录等阻塞态；登录中请用 [isLoggingIn]，避免整页转圈。
   bool get isLoading => _isLoading;
+  bool get isLoggingIn => _isLoggingIn;
   String? get error => _error;
 
   Future<void> _initAuth() async {
@@ -35,7 +43,7 @@ class AuthProvider with ChangeNotifier {
       }
     } catch (error) {
       _userInfo = null;
-      _error = error.toString();
+      _error = describeAuthError(error);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -43,7 +51,8 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> login() async {
-    _isLoading = true;
+    if (_isLoggingIn) return;
+    _isLoggingIn = true;
     _error = null;
     notifyListeners();
 
@@ -51,12 +60,22 @@ class AuthProvider with ChangeNotifier {
       _userInfo = await _authService.login();
       _error = null;
     } catch (error) {
-      _error = error.toString();
+      if (error is LoginCancelledException) {
+        _error = null;
+      } else {
+        _error = describeAuthError(error);
+      }
       rethrow;
     } finally {
-      _isLoading = false;
+      _isLoggingIn = false;
       notifyListeners();
     }
+  }
+
+  /// 取消进行中的浏览器授权等待。
+  Future<void> cancelLogin() async {
+    if (!_isLoggingIn) return;
+    await _authService.cancelLogin();
   }
 
   Future<void> logout() async {
@@ -68,7 +87,7 @@ class AuthProvider with ChangeNotifier {
       _userInfo = null;
       _error = null;
     } catch (error) {
-      _error = error.toString();
+      _error = describeAuthError(error);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -83,7 +102,7 @@ class AuthProvider with ChangeNotifier {
       _error = null;
       notifyListeners();
     } catch (error) {
-      _error = error.toString();
+      _error = describeAuthError(error);
       _userInfo = null;
       notifyListeners();
     }

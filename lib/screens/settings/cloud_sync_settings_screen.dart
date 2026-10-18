@@ -59,6 +59,19 @@ class _CloudSyncBodyState extends State<CloudSyncBody> {
                       style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonal(
+                    onPressed: authProvider.isLoggingIn
+                        ? null
+                        : () => _handleLogin(context, authProvider),
+                    child: authProvider.isLoggingIn
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('去登录'),
+                  ),
                 ],
               ),
             ),
@@ -312,6 +325,24 @@ class _CloudSyncBodyState extends State<CloudSyncBody> {
     if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
     if (diff.inHours < 24) return '${diff.inHours} 小时前';
     return '${time.month}/${time.day} ${time.hour}:${time.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _handleLogin(BuildContext context, AuthProvider authProvider) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final errorColor = Theme.of(context).colorScheme.error;
+    try {
+      await authProvider.login();
+    } on LoginCancelledException {
+      return;
+    } catch (e) {
+      logger.e('云同步页登录失败', error: e);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(describeAuthError(e)),
+          backgroundColor: errorColor,
+        ),
+      );
+    }
   }
 
   Future<void> _handleSyncNow() async {

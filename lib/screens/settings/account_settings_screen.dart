@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../providers/auth_provider.dart';
+import '../../utils/logger.dart';
 export '../../providers/auth_provider.dart';
 
 /// AccountSettingsScreen - 账户设置页面
 ///
 /// - 窄屏: 使用 Scaffold 完整页面
 /// - 宽屏: 使用 AccountSettingsBody 作为 SettingsLayout 的 Detail 区域
-///   - 采用双栏布局：左栏用户信息，右栏账户详情
+/// - 登录后内容以单行流展示，最大行宽 1200px
 class AccountSettingsScreen extends StatelessWidget {
   const AccountSettingsScreen({super.key});
 
@@ -25,11 +27,14 @@ class AccountSettingsScreen extends StatelessWidget {
 class AccountSettingsBody extends StatelessWidget {
   const AccountSettingsBody({super.key});
 
+  static const double maxContentWidth = 1200;
+
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
 
-    if (authProvider.isLoading) {
+    // 仅会话恢复阶段整页加载；浏览器授权等待保留登录空态骨架
+    if (authProvider.isLoading && !authProvider.isLoggingIn) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -41,44 +46,72 @@ class AccountSettingsBody extends StatelessWidget {
   }
 
   Widget _buildLoginPrompt(BuildContext context, AuthProvider authProvider) {
+    final theme = Theme.of(context);
+    final isLoggingIn = authProvider.isLoggingIn;
+
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.account_circle_outlined,
-              size: 80,
-              color: Theme.of(context).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              '登录 SECTL 账户',
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '登录后可同步数据、管理账户信息',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: maxContentWidth),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.account_circle_outlined,
+                size: 80,
+                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
               ),
-            ),
-            const SizedBox(height: 32),
-            FilledButton.icon(
-              onPressed: authProvider.isLoading ? null : () => _handleLogin(context, authProvider),
-              icon: const Icon(Icons.login),
-              label: const Text('登录'),
-            ),
-            if (authProvider.error != null) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
               Text(
-                authProvider.error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+                '登录 SECTL 账户',
+                style: theme.textTheme.headlineSmall,
                 textAlign: TextAlign.center,
               ),
+              const SizedBox(height: 8),
+              Text(
+                '登录后可同步数据、管理账户信息。\n将打开浏览器完成 SECTL 授权，授权后自动返回应用。',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              if (isLoggingIn) ...[
+                const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    SizedBox(width: 12),
+                    Text('等待浏览器授权…'),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: () => _handleCancelLogin(context, authProvider),
+                  icon: const Icon(Icons.close),
+                  label: const Text('取消登录'),
+                ),
+              ] else
+                FilledButton.icon(
+                  onPressed: () => _handleLogin(context, authProvider),
+                  icon: const Icon(Icons.login),
+                  label: const Text('登录'),
+                ),
+              if (!isLoggingIn && authProvider.error != null) ...[
+                const SizedBox(height: 16),
+                Text(
+                  authProvider.error!,
+                  style: TextStyle(color: theme.colorScheme.error),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -87,165 +120,244 @@ class AccountSettingsBody extends StatelessWidget {
   Widget _buildUserInfo(BuildContext context, AuthProvider authProvider) {
     final userInfo = authProvider.userInfo!;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isWide = constraints.maxWidth >= 600;
-
-        if (isWide) {
-          return _buildWideLayout(context, userInfo, authProvider);
-        } else {
-          return _buildNarrowLayout(context, userInfo, authProvider);
-        }
-      },
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: maxContentWidth),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Card(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isWide = constraints.maxWidth >= 720;
+                  if (isWide) {
+                    return _buildWideRow(context, userInfo, authProvider);
+                  }
+                  return _buildNarrowFlow(context, userInfo, authProvider);
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _buildNarrowLayout(BuildContext context, userInfo, AuthProvider authProvider) {
-    return ListView(
+  /// 宽屏：身份 · 详情 · 操作 同一行流式排布
+  Widget _buildWideRow(BuildContext context, userInfo, AuthProvider authProvider) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        _buildUserInfoCard(context, userInfo),
-        const SizedBox(height: 16),
-        _buildAccountDetailsCard(context, userInfo),
-        const SizedBox(height: 32),
-        _buildLogoutButton(context, authProvider),
-        const SizedBox(height: 16),
+        _buildAvatar(context, userInfo, radius: 40),
+        const SizedBox(width: 20),
+        Expanded(
+          flex: 3,
+          child: _buildIdentity(context, userInfo),
+        ),
+        const SizedBox(width: 28),
+        Expanded(
+          flex: 5,
+          child: _buildDetails(context, userInfo),
+        ),
+        const SizedBox(width: 28),
+        Align(
+          alignment: Alignment.centerRight,
+          child: _buildLogoutButton(context, authProvider, compact: true),
+        ),
       ],
     );
   }
 
-  Widget _buildWideLayout(BuildContext context, userInfo, AuthProvider authProvider) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 4,
-            child: Column(
-              children: [
-                _buildUserInfoCard(context, userInfo, isCompact: false),
-                const SizedBox(height: 24),
-                _buildLogoutButton(context, authProvider),
-              ],
-            ),
-          ),
-          const SizedBox(width: 24),
-          Expanded(
-            flex: 6,
-            child: _buildAccountDetailsCard(context, userInfo),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildUserInfoCard(BuildContext context, userInfo, {bool isCompact = true}) {
-    return Card(
-      margin: isCompact ? const EdgeInsets.all(16) : EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
+  /// 窄屏：同一列流式排布（仍受 1200px 行宽约束）
+  Widget _buildNarrowFlow(BuildContext context, userInfo, AuthProvider authProvider) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
           children: [
-            CircleAvatar(
-              radius: 50,
-              backgroundImage: userInfo.avatarUrl != null
-                  ? CachedNetworkImageProvider(userInfo.avatarUrl!)
-                  : null,
-              child: userInfo.avatarUrl == null
-                  ? Text(
-                      userInfo.name.isNotEmpty ? userInfo.name[0].toUpperCase() : 'U',
-                      style: const TextStyle(fontSize: 32),
-                    )
-                  : null,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              userInfo.name,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              userInfo.email,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
+            _buildAvatar(context, userInfo, radius: 36),
+            const SizedBox(width: 16),
+            Expanded(child: _buildIdentity(context, userInfo)),
           ],
         ),
-      ),
+        const SizedBox(height: 20),
+        _buildDetails(context, userInfo),
+        const SizedBox(height: 24),
+        _buildLogoutButton(context, authProvider),
+      ],
     );
   }
 
-  Widget _buildAccountDetailsCard(BuildContext context, userInfo) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        children: [
-          ListTile(
-            title: const Text('账户详情'),
-            titleTextStyle: Theme.of(context).textTheme.titleMedium,
-          ),
-          const Divider(height: 1),
-          _buildDetailItem(
-            context,
-            icon: Icons.badge_outlined,
-            label: '用户 ID',
-            value: userInfo.userId,
-          ),
-          _buildDetailItem(
-            context,
-            icon: Icons.shield_outlined,
-            label: '权限等级',
-            value: userInfo.permission,
-          ),
-          if (userInfo.githubUsername != null && userInfo.githubUsername!.isNotEmpty)
-            _buildDetailItem(
-              context,
-              icon: Icons.code,
-              label: 'GitHub',
-              value: userInfo.githubUsername!,
+  Widget _buildAvatar(BuildContext context, userInfo, {required double radius}) {
+    final hasAvatar = userInfo.avatarUrl != null && userInfo.avatarUrl!.isNotEmpty;
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundImage:
+          hasAvatar ? CachedNetworkImageProvider(userInfo.avatarUrl!) : null,
+      onBackgroundImageError: hasAvatar
+          ? (_, __) {}
+          : null,
+      child: hasAvatar
+          ? null
+          : Text(
+              userInfo.name.isNotEmpty ? userInfo.name[0].toUpperCase() : 'U',
+              style: TextStyle(fontSize: radius),
             ),
-          _buildDetailItem(
-            context,
-            icon: Icons.calendar_today_outlined,
-            label: '注册时间',
-            value: _formatDate(userInfo.createdAt),
-          ),
-        ],
-      ),
     );
   }
 
-  Widget _buildDetailItem(
+  Widget _buildIdentity(BuildContext context, userInfo) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          userInfo.name,
+          style: theme.textTheme.titleLarge,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          userInfo.email,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetails(BuildContext context, userInfo) {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      children: [
+        _buildDetailChip(
+          context,
+          icon: Icons.badge_outlined,
+          label: '用户 ID',
+          value: userInfo.userId,
+          copyable: true,
+        ),
+        _buildDetailChip(
+          context,
+          icon: Icons.shield_outlined,
+          label: '权限等级',
+          value: userInfo.permission,
+        ),
+        if (userInfo.githubUsername != null && userInfo.githubUsername!.isNotEmpty)
+          _buildDetailChip(
+            context,
+            icon: Icons.code,
+            label: 'GitHub',
+            value: userInfo.githubUsername!,
+            copyable: true,
+          ),
+        _buildDetailChip(
+          context,
+          icon: Icons.calendar_today_outlined,
+          label: '注册时间',
+          value: _formatDate(userInfo.createdAt),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetailChip(
     BuildContext context, {
     required IconData icon,
     required String label,
     required String value,
+    bool copyable = false,
   }) {
-    return ListTile(
-      leading: Icon(icon, size: 20),
-      title: Text(label),
-      subtitle: Text(value),
-      dense: true,
+    final theme = Theme.of(context);
+    final chip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                Text(
+                  value,
+                  style: theme.textTheme.bodyMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          if (copyable) ...[
+            const SizedBox(width: 4),
+            Icon(
+              Icons.copy_rounded,
+              size: 16,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ],
+      ),
+    );
+
+    if (!copyable) return chip;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => _copyValue(context, value, label: label),
+      child: chip,
     );
   }
 
-  Widget _buildLogoutButton(BuildContext context, AuthProvider authProvider) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: OutlinedButton.icon(
-        onPressed: authProvider.isLoading ? null : () => _handleLogout(context, authProvider),
-        icon: const Icon(Icons.logout),
-        label: const Text('退出登录'),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: Theme.of(context).colorScheme.error,
-          side: BorderSide(
-            color: Theme.of(context).colorScheme.error,
-          ),
-          minimumSize: const Size(double.infinity, 48),
-        ),
+  Future<void> _copyValue(BuildContext context, String value, {required String label}) async {
+    await Clipboard.setData(ClipboardData(text: value));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('已复制$label')),
+    );
+  }
+
+  Widget _buildLogoutButton(
+    BuildContext context,
+    AuthProvider authProvider, {
+    bool compact = false,
+  }) {
+    final button = OutlinedButton.icon(
+      onPressed: authProvider.isLoading
+          ? null
+          : () => _handleLogout(context, authProvider),
+      icon: const Icon(Icons.logout),
+      label: const Text('退出登录'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Theme.of(context).colorScheme.error,
+        side: BorderSide(color: Theme.of(context).colorScheme.error),
+        minimumSize: Size(compact ? 140 : double.infinity, 48),
       ),
     );
+
+    if (compact) return button;
+    return button;
   }
 
   Future<void> _handleLogin(BuildContext context, AuthProvider authProvider) async {
@@ -254,21 +366,36 @@ class AccountSettingsBody extends StatelessWidget {
       await authProvider.login();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('登录成功'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: const Text('登录成功'),
+            backgroundColor: Theme.of(context).colorScheme.primary,
           ),
         );
       }
+    } on LoginCancelledException {
+      // 用户主动取消：不弹错误
     } catch (e) {
+      logger.e('登录失败', error: e);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('登录失败: ${e.toString()}'),
+            content: Text(describeAuthError(e)),
             backgroundColor: Theme.of(context).colorScheme.error,
           ),
         );
       }
+    }
+  }
+
+  Future<void> _handleCancelLogin(
+    BuildContext context,
+    AuthProvider authProvider,
+  ) async {
+    await authProvider.cancelLogin();
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已取消登录')),
+      );
     }
   }
 

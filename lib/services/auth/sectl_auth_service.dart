@@ -39,6 +39,14 @@ class AuthApiException implements Exception {
   String toString() => '$error: $description';
 }
 
+/// 用户主动取消登录（或 UI 侧调用 cancelLogin）时抛出。
+class LoginCancelledException implements Exception {
+  const LoginCancelledException();
+
+  @override
+  String toString() => 'Login cancelled';
+}
+
 class SectlAuthService {
   SectlAuthService({
     TokenManager? tokenManager,
@@ -159,7 +167,7 @@ class SectlAuthService {
         onTimeout: () async {
           await _tokenManager.clearPendingAuthSession();
           await _cleanupRuntime();
-          throw TimeoutException('SECTL login timed out.');
+          throw TimeoutException('登录超时，请重试。');
         },
       );
     }
@@ -179,9 +187,21 @@ class SectlAuthService {
       onTimeout: () async {
         await _tokenManager.clearPendingAuthSession();
         await _cleanupRuntime();
-        throw TimeoutException('SECTL login timed out.');
+        throw TimeoutException('登录超时，请重试。');
       },
     );
+  }
+
+  /// 取消进行中的登录：清空 pending session、关闭回调运行时，并让
+  /// [login] 的 future 以 [LoginCancelledException] 结束。
+  Future<void> cancelLogin() async {
+    final completer = _activeLoginCompleter;
+    _activeLoginCompleter = null;
+    await _tokenManager.clearPendingAuthSession();
+    await _cleanupRuntime();
+    if (completer != null && !completer.isCompleted) {
+      completer.completeError(const LoginCancelledException());
+    }
   }
 
   Future<UserInfo?> completePendingLoginIfPresent() async {
