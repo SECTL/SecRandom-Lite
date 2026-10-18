@@ -19,6 +19,7 @@ class AuthProvider with ChangeNotifier {
   bool _isLoading = false;
   bool _isLoggingIn = false;
   String? _error;
+  Future<void>? _loginInFlight;
 
   UserInfo? get userInfo => _userInfo;
   bool get isLoggedIn => _userInfo != null;
@@ -50,8 +51,17 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> login() async {
-    if (_isLoggingIn) return;
+  Future<void> login() {
+    final existing = _loginInFlight;
+    if (existing != null) return existing;
+    final future = _performLogin();
+    _loginInFlight = future.whenComplete(() {
+      _loginInFlight = null;
+    });
+    return _loginInFlight!;
+  }
+
+  Future<void> _performLogin() async {
     _isLoggingIn = true;
     _error = null;
     notifyListeners();

@@ -34,7 +34,7 @@ class AccountSettingsBody extends StatelessWidget {
     final authProvider = context.watch<AuthProvider>();
 
     // 仅会话恢复阶段整页加载；浏览器授权等待保留登录空态骨架
-    if (authProvider.isLoading && !authProvider.isLoggingIn) {
+    if (authProvider.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
@@ -355,8 +355,6 @@ class AccountSettingsBody extends StatelessWidget {
         minimumSize: Size(compact ? 140 : double.infinity, 48),
       ),
     );
-
-    if (compact) return button;
     return button;
   }
 

@@ -150,39 +150,12 @@ class SectlAuthService {
     await _prepareCallbackRuntime(session);
 
     final authUrl = getAuthorizationUrl(session);
-    _activeLoginCompleter = Completer<UserInfo>();
+    final completer = Completer<UserInfo>();
+    _activeLoginCompleter = completer;
     _webRedirectFallbackTriggered = false;
 
-    if (targetPlatform == PendingAuthTargetPlatform.web) {
-      final popupSession = await openWebAuthPopup(authUrl);
-      if (popupSession == null) {
-        await navigateBrowserTo(authUrl);
-        return _activeLoginCompleter!.future;
-      }
-
-      _webPopupSession = popupSession;
-      unawaited(_waitForWebPopupCallback(popupSession));
-      return _activeLoginCompleter!.future.timeout(
-        const Duration(minutes: 5),
-        onTimeout: () async {
-          await _tokenManager.clearPendingAuthSession();
-          await _cleanupRuntime();
-          throw TimeoutException('登录超时，请重试。');
-        },
-      );
-    }
-
-    final launched = await launchUrl(
-      Uri.parse(authUrl),
-      mode: LaunchMode.externalApplication,
-    );
-    if (!launched) {
-      await _tokenManager.clearPendingAuthSession();
-      await _cleanupRuntime();
-      throw StateError('Unable to open the browser for SECTL login.');
-    }
-
-    return _activeLoginCompleter!.future.timeout(
+    // 先挂上带超时的 future 再异步打开浏览器，避免取消时 completeError 无监听者
+    final loginFuture = completer.future.timeout(
       const Duration(minutes: 5),
       onTimeout: () async {
         await _tokenManager.clearPendingAuthSession();
@@ -190,6 +163,41 @@ class SectlAuthService {
         throw TimeoutException('登录超时，请重试。');
       },
     );
+
+    unawaited(() async {
+      try {
+        if (targetPlatform == PendingAuthTargetPlatform.web) {
+          final popupSession = await openWebAuthPopup(authUrl);
+          if (popupSession == null) {
+            await navigateBrowserTo(authUrl);
+            return;
+          }
+          _webPopupSession = popupSession;
+          unawaited(_waitForWebPopupCallback(popupSession));
+          return;
+        }
+
+        final launched = await launchUrl(
+          Uri.parse(authUrl),
+          mode: LaunchMode.externalApplication,
+        );
+        if (!launched) {
+          await _tokenManager.clearPendingAuthSession();
+          await _cleanupRuntime();
+          if (!completer.isCompleted) {
+            completer.completeError(
+              StateError('Unable to open the browser for SECTL login.'),
+            );
+          }
+        }
+      } catch (error, stackTrace) {
+        if (!completer.isCompleted) {
+          completer.completeError(error, stackTrace);
+        }
+      }
+    }());
+
+    return loginFuture;
   }
 
   /// 取消进行中的登录：清空 pending session、关闭回调运行时，并让
