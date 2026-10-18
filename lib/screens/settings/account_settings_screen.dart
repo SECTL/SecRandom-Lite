@@ -10,7 +10,7 @@ export '../../providers/auth_provider.dart';
 ///
 /// - 窄屏: 使用 Scaffold 完整页面
 /// - 宽屏: 使用 AccountSettingsBody 作为 SettingsLayout 的 Detail 区域
-/// - 登录后内容以单行流展示，最大行宽 1200px
+/// - 各宽度统一竖向流布局，最大行宽 1200px，无外层卡片
 class AccountSettingsScreen extends StatelessWidget {
   const AccountSettingsScreen({super.key});
 
@@ -120,57 +120,18 @@ class AccountSettingsBody extends StatelessWidget {
   Widget _buildUserInfo(BuildContext context, AuthProvider authProvider) {
     final userInfo = authProvider.userInfo!;
 
+    // 各宽度统一为竖向流布局（头像身份 → 详情 chips → 退出），无外层卡片
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: maxContentWidth),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Card(
-            margin: EdgeInsets.zero,
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final isWide = constraints.maxWidth >= 720;
-                  if (isWide) {
-                    return _buildWideRow(context, userInfo, authProvider);
-                  }
-                  return _buildNarrowFlow(context, userInfo, authProvider);
-                },
-              ),
-            ),
-          ),
+          child: _buildNarrowFlow(context, userInfo, authProvider),
         ),
       ),
     );
   }
 
-  /// 宽屏：身份 · 详情 · 操作 同一行流式排布
-  Widget _buildWideRow(BuildContext context, userInfo, AuthProvider authProvider) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        _buildAvatar(context, userInfo, radius: 40),
-        const SizedBox(width: 20),
-        Expanded(
-          flex: 3,
-          child: _buildIdentity(context, userInfo),
-        ),
-        const SizedBox(width: 28),
-        Expanded(
-          flex: 5,
-          child: _buildDetails(context, userInfo),
-        ),
-        const SizedBox(width: 28),
-        Align(
-          alignment: Alignment.centerRight,
-          child: _buildLogoutButton(context, authProvider, compact: true),
-        ),
-      ],
-    );
-  }
-
-  /// 窄屏：同一列流式排布（仍受 1200px 行宽约束）
   Widget _buildNarrowFlow(BuildContext context, userInfo, AuthProvider authProvider) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -338,12 +299,8 @@ class AccountSettingsBody extends StatelessWidget {
     );
   }
 
-  Widget _buildLogoutButton(
-    BuildContext context,
-    AuthProvider authProvider, {
-    bool compact = false,
-  }) {
-    final button = OutlinedButton.icon(
+  Widget _buildLogoutButton(BuildContext context, AuthProvider authProvider) {
+    return OutlinedButton.icon(
       onPressed: authProvider.isLoading
           ? null
           : () => _handleLogout(context, authProvider),
@@ -352,10 +309,9 @@ class AccountSettingsBody extends StatelessWidget {
       style: OutlinedButton.styleFrom(
         foregroundColor: Theme.of(context).colorScheme.error,
         side: BorderSide(color: Theme.of(context).colorScheme.error),
-        minimumSize: Size(compact ? 140 : double.infinity, 48),
+        minimumSize: const Size(double.infinity, 48),
       ),
     );
-    return button;
   }
 
   Future<void> _handleLogin(BuildContext context, AuthProvider authProvider) async {
