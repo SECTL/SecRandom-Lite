@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'cloud_api.dart';
+import 'sync_identity.dart';
 import 'sync_state.dart';
 
 /// 单设备单 kind 的流摘要（云端 meta）
@@ -36,7 +37,7 @@ class StreamMeta {
 
 /// 每设备 append-only 历史流。
 ///
-/// - 本设备只写自己的 key：`secrandom.history.v2.<kind>.<deviceId>.<n>`
+/// - 本设备只写自己的 key：`srlite.history.v2.<kind>.<deviceId>.<n>`
 /// - 摘要只写自己的 meta key，推送时不依赖共享注册表
 /// - 读取端按 (shard, count) 游标续读，尾片增长不丢
 class HistoryStreamManager {
@@ -50,10 +51,10 @@ class HistoryStreamManager {
   final String deviceId;
 
   String shardKey(String targetDeviceId, int index) =>
-      'secrandom.history.v2.$kind.$targetDeviceId.$index';
+      'srlite.history.v2.$kind.$targetDeviceId.$index';
 
   String metaKey(String targetDeviceId) =>
-      'secrandom.history.v2.$kind.$targetDeviceId.meta';
+      'srlite.history.v2.$kind.$targetDeviceId.meta';
 
   Future<StreamMeta> loadMeta(String targetDeviceId) async {
     try {
@@ -73,7 +74,17 @@ class HistoryStreamManager {
     if (records.isEmpty) return loadMeta(deviceId);
 
     var meta = await loadMeta(deviceId);
-    final pending = List<Map<String, dynamic>>.from(records);
+    final existingUids = await _readOwnUids(meta);
+    final pending = <Map<String, dynamic>>[];
+    for (final record in records) {
+      final uid = kind == 'rollcall'
+          ? ensureHistoryUid(record)
+          : ensureLotteryUid(record);
+      if (existingUids.add(uid)) {
+        pending.add(Map<String, dynamic>.from(record));
+      }
+    }
+    if (pending.isEmpty) return meta;
 
     while (pending.isNotEmpty) {
       if (meta.shards == 0) {
@@ -99,11 +110,28 @@ class HistoryStreamManager {
       }
 
       var written = 0;
+      var needsNewShard = false;
       while (pending.isNotEmpty && existing.length < shardTarget) {
         final candidateBytes = _encodedBytes([...existing, pending.first]);
-        if (existing.isNotEmpty && candidateBytes > maxShardBytes) break;
+        if (existing.isNotEmpty && candidateBytes > maxShardBytes) {
+          needsNewShard = true;
+          break;
+        }
         existing.add(pending.removeAt(0));
         written++;
+      }
+
+      if (written == 0 && needsNewShard) {
+        // 当前尾片放不下下一条记录但本身未达字节上限：直接开新片，
+        // 否则外层循环会一直读到同一个尾片而死循环。
+        meta = StreamMeta(
+          shards: meta.shards + 1,
+          total: meta.total,
+          lastShardCount: 0,
+          updatedAt: meta.updatedAt,
+        );
+        await _writeShard(meta.shards - 1, []);
+        continue;
       }
 
       if (written > 0) {
@@ -152,6 +180,18 @@ class HistoryStreamManager {
   }
 
   // ── 内部 ──────────────────────────────────────────────
+
+  Future<Set<String>> _readOwnUids(StreamMeta meta) async {
+    final uids = <String>{};
+    for (var i = 0; i < meta.shards; i++) {
+      final records = await _readShard(i);
+      for (final record in records) {
+        final raw = record['uid'];
+        if (raw is String && raw.isNotEmpty) uids.add(raw);
+      }
+    }
+    return uids;
+  }
 
   int _encodedBytes(List<Map<String, dynamic>> records) =>
       utf8.encode(jsonEncode(records)).length;

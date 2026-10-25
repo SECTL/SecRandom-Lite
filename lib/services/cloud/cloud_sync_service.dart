@@ -10,6 +10,7 @@ import '../auth/token_manager.dart';
 import '../data_service.dart';
 import 'cloud_api.dart';
 import 'history_stream_manager.dart';
+import 'sync_identity.dart';
 import 'sync_local_store.dart';
 import 'sync_state.dart';
 
@@ -42,10 +43,13 @@ class CloudSyncService {
   String? _deviceId;
   LocalSyncState? _state;
   SyncLocalStore? _localStoreInstance;
+  Set<String>? _discoveredRemoteDevices;
+  DateTime? _discoveredRemoteDevicesAt;
+  static const Duration _deviceDiscoveryTtl = Duration(minutes: 10);
 
   // ── KV key 常量 ──────────────────────────────────────────
 
-  static const String studentsKey = 'secrandom.students';
+  static const String studentsKey = 'srlite.students';
 
   // ── 状态 ──────────────────────────────────────────────────
 
@@ -67,7 +71,7 @@ class CloudSyncService {
 
   // ── v2：每设备 append-only 流 ────────────────────────────
 
-  static const String registryKey = 'secrandom.sync.v2.registry';
+  static const String registryKey = 'srlite.sync.v2.registry';
 
   Future<SyncLocalStore> _localStore() async =>
       _store ?? (_localStoreInstance ??= DataServiceSyncLocalStore(DataService()));
@@ -126,16 +130,41 @@ class CloudSyncService {
   }
 
   /// 追加待上传记录（离线可调用）
-  Future<void> enqueueRecord(String kind, Map<String, dynamic> record) async {
+  Future<void> enqueueRecord(String kind, Map<String, dynamic> record) =>
+      enqueueAll(kind, [record]);
+
+  /// 追加待上传记录；按 uid 去重，避免重复补传。
+  Future<void> enqueueAll(
+    String kind,
+    Iterable<Map<String, dynamic>> records,
+  ) async {
     final outbox = await loadOutbox();
-    outbox.forKind(kind).add(record);
-    await _saveOutbox(outbox);
+    final target = outbox.forKind(kind);
+    final existing = target
+        .map((record) => record['uid'])
+        .whereType<String>()
+        .where((uid) => uid.isNotEmpty)
+        .toSet();
+    var changed = false;
+    for (final record in records) {
+      final rawUid = record['uid'];
+      final uid = rawUid is String ? rawUid.trim() : '';
+      if (uid.isNotEmpty && !existing.add(uid)) continue;
+      target.add(record);
+      changed = true;
+    }
+    if (changed) await _saveOutbox(outbox);
   }
 
-  Future<void> enqueueAll(String kind, Iterable<Map<String, dynamic>> records) async {
+  /// 丢弃 outbox 中已存在于云端的记录（按 uid）。
+  Future<void> removeFromOutbox(String kind, Set<String> uids) async {
+    if (uids.isEmpty) return;
     final outbox = await loadOutbox();
-    outbox.forKind(kind).addAll(records);
-    await _saveOutbox(outbox);
+    final before = outbox.forKind(kind).length;
+    outbox.removeUids(kind, uids);
+    if (outbox.forKind(kind).length != before) {
+      await _saveOutbox(outbox);
+    }
   }
 
   /// 把 outbox 冲洗到自己的流，并更新注册表
@@ -167,8 +196,8 @@ class CloudSyncService {
     try {
       final deviceId = await _resolveDeviceId();
       await flushOutbox();
-      await _api.putKv(key: 'secrandom.stats.v2.rollcall.$deviceId', value: ownRollcall);
-      await _api.putKv(key: 'secrandom.stats.v2.lottery.$deviceId', value: ownLottery);
+      await _api.putKv(key: 'srlite.stats.v2.rollcall.$deviceId', value: ownRollcall);
+      await _api.putKv(key: 'srlite.stats.v2.lottery.$deviceId', value: ownLottery);
       await _updateRegistryEntry(deviceId, (_) {});
       if (students != null && students.isNotEmpty) {
         await pushStudents(students);
@@ -195,9 +224,7 @@ class CloudSyncService {
       final deviceId = await _resolveDeviceId();
       final state = await loadState();
       final registry = await _loadRegistry();
-      final devices = ((registry['devices'] as Map?)?.keys ?? <dynamic>[])
-          .map((e) => e.toString())
-          .toList();
+      final devices = await _resolveRemoteDevices(registry);
 
       final idsByKind = {
         'rollcall': await existingUids('rollcall'),
@@ -216,8 +243,10 @@ class CloudSyncService {
           final seen = idsByKind[kind]!;
           final clearedAt = state.clearedAt[kind];
           for (final json in records) {
-            final uid = json['uid'] as String?;
-            if (uid == null || uid.isEmpty || seen.contains(uid)) continue;
+            final uid = kind == 'rollcall'
+                ? ensureHistoryUid(json)
+                : ensureLotteryUid(json);
+            if (seen.contains(uid)) continue;
             final time = _recordTime(kind, json);
             if (clearedAt != null && time != null && time.isBefore(clearedAt)) {
               continue;
@@ -261,8 +290,10 @@ class CloudSyncService {
     if (students.isNotEmpty) return true;
 
     final registry = await _loadRegistry();
-    final devices = ((registry['devices'] as Map?)?.keys ?? <dynamic>[])
-        .map((e) => e.toString());
+    final devices = await _resolveRemoteDevices(
+      registry,
+      refreshDiscovery: true,
+    );
 
     for (final remoteId in devices) {
       // 任一设备任一 kind 的历史流 total>0
@@ -286,7 +317,7 @@ class CloudSyncService {
   /// 读取单设备单 kind 的统计贡献（不存在返回空 map）
   Future<Map<String, int>> _statsContribution(String kind, String deviceId) async {
     try {
-      final value = await _api.getKvValue('secrandom.stats.v2.$kind.$deviceId');
+      final value = await _api.getKvValue('srlite.stats.v2.$kind.$deviceId');
       if (value is Map) {
         return value.map(
           (k, v) => MapEntry(
@@ -310,9 +341,10 @@ class CloudSyncService {
     _lastError = null;
     try {
       final registry = await _loadRegistry();
-      final devices = ((registry['devices'] as Map?)?.keys ?? <dynamic>[])
-          .map((e) => e.toString())
-          .toList();
+      final devices = await _resolveRemoteDevices(
+        registry,
+        refreshDiscovery: true,
+      );
 
       final rollcallByUid = <String, Map<String, dynamic>>{};
       final lotteryByUid = <String, Map<String, dynamic>>{};
@@ -336,8 +368,9 @@ class CloudSyncService {
           }
           final target = kind == 'rollcall' ? rollcallByUid : lotteryByUid;
           for (final json in records) {
-            final uid = json['uid'] as String?;
-            if (uid == null || uid.isEmpty) continue;
+            final uid = kind == 'rollcall'
+                ? ensureHistoryUid(json)
+                : ensureLotteryUid(json);
             target[uid] = json;
           }
         }
@@ -370,13 +403,12 @@ class CloudSyncService {
   Future<Map<String, Map<String, int>>> fetchRemoteStats(String kind) async {
     final deviceId = await _resolveDeviceId();
     final registry = await _loadRegistry();
-    final devices = ((registry['devices'] as Map?)?.keys ?? <dynamic>[])
-        .map((e) => e.toString())
+    final devices = (await _resolveRemoteDevices(registry))
         .where((id) => id != deviceId);
     final result = <String, Map<String, int>>{};
     for (final remoteId in devices) {
       try {
-        final value = await _api.getKvValue('secrandom.stats.v2.$kind.$remoteId');
+        final value = await _api.getKvValue('srlite.stats.v2.$kind.$remoteId');
         if (value is Map) {
           result[remoteId] = value.map(
             (k, v) => MapEntry(
@@ -411,6 +443,66 @@ class CloudSyncService {
       if (!e.isNotFound) rethrow;
     }
     return {'devices': <String, dynamic>{}};
+  }
+
+  Future<List<String>> _resolveRemoteDevices(
+    Map<String, dynamic> registry, {
+    bool refreshDiscovery = false,
+  }) async {
+    final devices = <String>{
+      ...((registry['devices'] as Map?)?.keys ?? <dynamic>[])
+          .map((key) => key.toString()),
+    };
+    devices.addAll(
+      await _discoverRemoteDevices(refresh: refreshDiscovery),
+    );
+    return devices.toList();
+  }
+
+  /// 从历史分片 / 统计键反推设备 ID，补足注册表并发读改写可能丢掉的设备项。
+  Future<Set<String>> _discoverRemoteDevices({bool refresh = false}) async {
+    final cached = _discoveredRemoteDevices;
+    final cachedAt = _discoveredRemoteDevicesAt;
+    if (!refresh &&
+        cached != null &&
+        cachedAt != null &&
+        DateTime.now().difference(cachedAt) < _deviceDiscoveryTtl) {
+      return cached;
+    }
+
+    try {
+      final devices = <String>{};
+      var offset = 0;
+      while (true) {
+        final page = await _api.listKv(limit: 100, offset: offset);
+        for (final entry in page.entries) {
+          final key = entry.key;
+          final isHistory = key.startsWith('srlite.history.v2.');
+          final isStats = key.startsWith('srlite.stats.v2.');
+          if (!isHistory && !isStats) continue;
+          final parts = key.split('.');
+          if (isHistory) {
+            if (parts.length < 6) continue;
+            if (parts[3] != 'rollcall' && parts[3] != 'lottery') continue;
+            final deviceId = parts[4];
+            if (deviceId.isNotEmpty) devices.add(deviceId);
+          } else {
+            if (parts.length < 5) continue;
+            if (parts[3] != 'rollcall' && parts[3] != 'lottery') continue;
+            final deviceId = parts[4];
+            if (deviceId.isNotEmpty) devices.add(deviceId);
+          }
+        }
+        if (!page.hasMore || page.entries.isEmpty) break;
+        offset += page.entries.length;
+      }
+      _discoveredRemoteDevices = devices;
+      _discoveredRemoteDevicesAt = DateTime.now();
+      return devices;
+    } catch (e) {
+      logger.w('远端设备发现失败，回退注册表', error: e);
+      return cached ?? const <String>{};
+    }
   }
 
   Future<void> _registerStream(String deviceId, String kind, StreamMeta meta) =>

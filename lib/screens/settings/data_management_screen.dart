@@ -456,6 +456,11 @@ class _DataManagementBodyState extends State<DataManagementBody> {
         if (success) {
           final appProvider = Provider.of<AppProvider>(context, listen: false);
           await appProvider.reloadData();
+          if (importResult.historyRecords != null ||
+              importResult.lotteryRecords != null) {
+            await appProvider.syncLocalHistoryToCloud();
+          }
+          if (!mounted) return;
           _showSnackBar('导入成功！');
         } else {
           _showSnackBar('导入失败，请重试', isError: true);

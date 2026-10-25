@@ -46,4 +46,28 @@ void main() {
     final plain = rollcall().toJson()..remove('uid');
     expect(HistoryRecord.fromJson(plain).uid, isNull);
   });
+
+  test('ensureHistoryUid 为缺失 uid 的旧记录补稳定 uid', () {
+    final json = rollcall().toJson()..remove('uid');
+    final uid = ensureHistoryUid(json);
+    expect(uid, startsWith('legacy:'));
+    expect(json['uid'], uid);
+    expect(ensureHistoryUid(json), uid);
+    expect(ensureHistoryUid(rollcall().copyWithUid('dev-1:1').toJson()), 'dev-1:1');
+  });
+
+  test('ensureLotteryUid 为缺失 uid 的旧记录补稳定 uid', () {
+    final record = LotteryRecord(
+      id: 'lottery-1',
+      poolName: '开学奖品',
+      prizeName: '笔记本',
+      drawTime: DateTime(2026, 1, 1, 8),
+    );
+    final json = record.toJson()..remove('uid');
+    final uid = ensureLotteryUid(json);
+    expect(uid, startsWith('legacy:'));
+    expect(json['uid'], uid);
+    expect(ensureLotteryUid(json), uid);
+    expect(ensureLotteryUid(record.copyWithUid('dev-1:1').toJson()), 'dev-1:1');
+  });
 }

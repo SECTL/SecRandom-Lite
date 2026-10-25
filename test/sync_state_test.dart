@@ -9,6 +9,7 @@ void main() {
     state.pulled['dev-b'] = {'rollcall': const SyncCursor(shard: 1, count: 80)};
     state.ownRollcallStats['张三'] = 3;
     state.legacyUploaded = true;
+    state.baselineInitialized = true;
 
     final restored = LocalSyncState.fromJson(state.toJson());
     expect(restored.ownSeq['rollcall'], 12);
@@ -17,6 +18,7 @@ void main() {
     expect(restored.pulled['dev-b']!['rollcall']!.count, 80);
     expect(restored.ownRollcallStats['张三'], 3);
     expect(restored.legacyUploaded, isTrue);
+    expect(restored.baselineInitialized, isTrue);
   });
 
   test('SyncOutbox 增删与按 kind 读取', () {

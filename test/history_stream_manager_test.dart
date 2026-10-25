@@ -59,6 +59,16 @@ void main() {
     expect(next.count, 3);
   });
 
+  test('追加重试不会重复写入相同 uid', () async {
+    await mgr.appendOwn([rec(0)]);
+    await mgr.appendOwn([rec(0), rec(1)]);
+
+    final meta = await mgr.loadMeta('dev-a');
+    expect(meta.total, 2);
+    final (records, _) = await mgr.readFrom('dev-a', const SyncCursor());
+    expect(records.map((e) => e['uid']), ['dev-a:0', 'dev-a:1']);
+  });
+
   test('105 条按 100 条/片封片，跨片续读无重复', () async {
     await mgr.appendOwn([for (var i = 0; i < 105; i++) rec(i)]);
     final meta = await mgr.loadMeta('dev-a');
@@ -80,5 +90,21 @@ void main() {
     await mgr.appendOwn([big, rec(1)]);
     final meta = await mgr.loadMeta('dev-a');
     expect(meta.shards, 2, reason: '单条超限允许独占一片，后续记录开新片');
+  });
+
+  test('非空尾片放不下下一条大记录时新开分片', () async {
+    await mgr.appendOwn([rec(0)]);
+    final big = <String, dynamic>{
+      'id': 1,
+      'uid': 'dev-a:1',
+      'name': '名' * 20000, // UTF-8 约 60KB
+    };
+    await mgr.appendOwn([big]);
+
+    final meta = await mgr.loadMeta('dev-a');
+    expect(meta.shards, 2);
+    expect(meta.total, 2);
+    final (records, _) = await mgr.readFrom('dev-a', const SyncCursor());
+    expect(records.map((e) => e['uid']), ['dev-a:0', 'dev-a:1']);
   });
 }

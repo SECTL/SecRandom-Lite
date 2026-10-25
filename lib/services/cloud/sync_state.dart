@@ -23,6 +23,7 @@ class LocalSyncState {
     Map<String, int>? ownRollcallStats,
     Map<String, int>? ownLotteryStats,
     this.legacyUploaded = false,
+    this.baselineInitialized = false,
   })  : ownSeq = Map<String, int>.from(ownSeq ?? {}),
         clearedAt = Map<String, DateTime>.from(clearedAt ?? {}),
         pulled = {
@@ -48,6 +49,9 @@ class LocalSyncState {
   /// 旧记录是否已一次性补传
   bool legacyUploaded;
 
+  /// 本地是否已经完成过一次登录初始同步（云端基线或双向并集）
+  bool baselineInitialized;
+
   Map<String, dynamic> toJson() => {
         'own_seq': ownSeq,
         'cleared_at': clearedAt.map((k, v) => MapEntry(k, v.toIso8601String())),
@@ -58,6 +62,7 @@ class LocalSyncState {
         'own_rollcall_stats': ownRollcallStats,
         'own_lottery_stats': ownLotteryStats,
         'legacy_uploaded': legacyUploaded,
+        'baseline_initialized': baselineInitialized,
       };
 
   factory LocalSyncState.fromJson(Map<String, dynamic> json) {
@@ -87,6 +92,7 @@ class LocalSyncState {
       ownLotteryStats: ((json['own_lottery_stats'] as Map?) ?? {})
           .map((k, v) => MapEntry(k.toString(), v as int? ?? 0)),
       legacyUploaded: json['legacy_uploaded'] as bool? ?? false,
+      baselineInitialized: json['baseline_initialized'] as bool? ?? false,
     );
   }
 }

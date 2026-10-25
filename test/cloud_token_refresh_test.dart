@@ -86,7 +86,7 @@ void main() {
       tokenManager: tokenManager,
     );
 
-    final value = await api.getKvValue('secrandom.test.key');
+    final value = await api.getKvValue('srlite.test.key');
 
     expect(value, {'ok': true});
     expect(refreshCallCount, 1);
@@ -103,9 +103,9 @@ void main() {
     );
 
     final results = await Future.wait([
-      api.getKvValue('secrandom.test.a'),
-      api.getKvValue('secrandom.test.b'),
-      api.getKvValue('secrandom.test.c'),
+      api.getKvValue('srlite.test.a'),
+      api.getKvValue('srlite.test.b'),
+      api.getKvValue('srlite.test.c'),
     ]);
 
     expect(results, everyElement({'ok': true}));
@@ -119,7 +119,7 @@ void main() {
     );
 
     await expectLater(
-      api.getKvValue('secrandom.test.key'),
+      api.getKvValue('srlite.test.key'),
       throwsA(
         isA<CloudApiException>()
             .having((e) => e.statusCode, 'statusCode', 401)
@@ -139,7 +139,7 @@ void main() {
     );
 
     await expectLater(
-      api.getKvValue('secrandom.test.key'),
+      api.getKvValue('srlite.test.key'),
       throwsA(isA<CloudApiException>().having((e) => e.statusCode, 'statusCode', 401)),
     );
     expect(refreshCallCount, 0);
