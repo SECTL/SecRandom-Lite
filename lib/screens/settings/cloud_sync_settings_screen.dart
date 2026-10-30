@@ -96,11 +96,6 @@ class _CloudSyncBodyState extends State<CloudSyncBody> {
 
         // 同步操作
         _buildSyncActions(context, appProvider, authProvider),
-
-        const SizedBox(height: 16),
-
-        // 同步数据说明
-        _buildInfoCard(context),
       ],
     );
   }
@@ -260,59 +255,6 @@ class _CloudSyncBodyState extends State<CloudSyncBody> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildInfoCard(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '同步内容',
-              style: theme.textTheme.titleSmall,
-            ),
-            const SizedBox(height: 8),
-            _buildInfoRow(context, Icons.people, '学生名单', '各班级学生信息'),
-            _buildInfoRow(context, Icons.bar_chart, '抽取统计', '每台设备贡献求和（公平抽取依据）'),
-            _buildInfoRow(context, Icons.history, '历史记录', '每台设备独立历史流，拉取时按 uid 合并去重'),
-            const SizedBox(height: 8),
-            Text(
-              '离线期间的记录会保留在本地队列，登录或恢复网络后自动补传；重复上传不会产生重复记录。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(BuildContext context, IconData icon, String title, String subtitle) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: theme.colorScheme.primary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: theme.textTheme.bodyMedium),
-                Text(subtitle, style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                )),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
