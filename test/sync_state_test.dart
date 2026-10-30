@@ -10,6 +10,17 @@ void main() {
     state.ownRollcallStats['张三'] = 3;
     state.legacyUploaded = true;
     state.baselineInitialized = true;
+    state.studentClock = 9;
+    state.studentSeq = 4;
+    state.studentsDirty = true;
+    state.studentTombstones['legacy:abc'] = StudentTombstone(
+      rev: 9,
+      by: 'dev-a',
+      at: DateTime(2026, 3, 4, 5, 6, 7),
+    );
+    state.clearsDirty = true;
+    state.clearedClasses['rollcall'] = {'1': DateTime(2026, 4, 5, 6, 7, 8)};
+    state.clearedPools['期末奖池'] = DateTime(2026, 5, 6, 7, 8, 9);
 
     final restored = LocalSyncState.fromJson(state.toJson());
     expect(restored.ownSeq['rollcall'], 12);
@@ -19,6 +30,21 @@ void main() {
     expect(restored.ownRollcallStats['张三'], 3);
     expect(restored.legacyUploaded, isTrue);
     expect(restored.baselineInitialized, isTrue);
+    expect(restored.studentClock, 9);
+    expect(restored.studentSeq, 4);
+    expect(restored.studentsDirty, isTrue);
+    expect(restored.studentTombstones['legacy:abc']!.rev, 9);
+    expect(restored.studentTombstones['legacy:abc']!.by, 'dev-a');
+    expect(
+      restored.studentTombstones['legacy:abc']!.at,
+      DateTime(2026, 3, 4, 5, 6, 7),
+    );
+    expect(restored.clearsDirty, isTrue);
+    expect(
+      restored.clearedClasses['rollcall']!['1'],
+      DateTime(2026, 4, 5, 6, 7, 8),
+    );
+    expect(restored.clearedPools['期末奖池'], DateTime(2026, 5, 6, 7, 8, 9));
   });
 
   test('SyncOutbox 增删与按 kind 读取', () {

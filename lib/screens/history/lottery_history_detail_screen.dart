@@ -9,16 +9,15 @@ import '../../widgets/history/filter_row.dart';
 class LotteryHistoryDetailScreen extends StatefulWidget {
   final String? initialPool;
 
-  const LotteryHistoryDetailScreen({
-    super.key,
-    this.initialPool,
-  });
+  const LotteryHistoryDetailScreen({super.key, this.initialPool});
 
   @override
-  State<LotteryHistoryDetailScreen> createState() => _LotteryHistoryDetailScreenState();
+  State<LotteryHistoryDetailScreen> createState() =>
+      _LotteryHistoryDetailScreenState();
 }
 
-class _LotteryHistoryDetailScreenState extends State<LotteryHistoryDetailScreen> {
+class _LotteryHistoryDetailScreenState
+    extends State<LotteryHistoryDetailScreen> {
   late LotteryHistoryFilter _filter;
   final LotteryService _lotteryService = LotteryService();
   List<LotteryRecord> _lotteryRecords = [];
@@ -50,9 +49,11 @@ class _LotteryHistoryDetailScreenState extends State<LotteryHistoryDetailScreen>
       final records = await _lotteryService.loadLotteryRecords();
       setState(() {
         _lotteryRecords = records;
-        final poolNames = records.map((r) => r.poolName).toSet().toList()..sort();
+        final poolNames = records.map((r) => r.poolName).toSet().toList()
+          ..sort();
         if (poolNames.isNotEmpty &&
-            (_filter.selectedPool == null || !poolNames.contains(_filter.selectedPool))) {
+            (_filter.selectedPool == null ||
+                !poolNames.contains(_filter.selectedPool))) {
           _filter = _filter.copyWith(selectedPool: poolNames.first);
         }
         _isInitialLoading = false;
@@ -103,54 +104,57 @@ class _LotteryHistoryDetailScreenState extends State<LotteryHistoryDetailScreen>
 
   Future<void> _clearCurrentHistory() async {
     if (_filter.selectedPool == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('当前没有可清空的奖池历史')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('当前没有可清空的奖池历史')));
       return;
     }
     final confirmed = await _showClearConfirmDialog(
       title: '确认清空',
-      content: '确定要清空奖池 "${_filter.selectedPool}" 的抽奖历史吗？',
+      content:
+          '确定要清空奖池 "${_filter.selectedPool}" 的抽奖历史吗？\n\n'
+          '其他登录同一账号的设备也会同步清空。',
     );
     if (confirmed != true || !mounted) return;
     try {
-      await _lotteryService.clearLotteryRecords(poolName: _filter.selectedPool);
+      await context.read<AppProvider>().clearLotteryHistory(
+        poolName: _filter.selectedPool,
+      );
       await _loadLotteryRecords();
       if (!mounted) return;
       _resetPagination();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已清空当前奖池抽奖历史')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已清空当前奖池抽奖历史')));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('清空抽奖历史失败')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('清空抽奖历史失败')));
     }
   }
 
   Future<void> _clearAllHistory() async {
     final confirmed = await _showClearConfirmDialog(
       title: '确认清空',
-      content: '确定要清空全部抽奖历史吗？此操作无法撤销。',
+      content:
+          '确定要清空全部抽奖历史吗？此操作无法撤销。\n\n'
+          '其他登录同一账号的设备也会同步清空。',
     );
     if (confirmed != true || !mounted) return;
     try {
-      await _lotteryService.clearLotteryRecords();
-      if (mounted) {
-        await context.read<AppProvider>().markLotteryCleared();
-      }
+      await context.read<AppProvider>().clearLotteryHistory();
       await _loadLotteryRecords();
       if (!mounted) return;
       _resetPagination();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已清空全部抽奖历史')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已清空全部抽奖历史')));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('清空抽奖历史失败')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('清空抽奖历史失败')));
     }
   }
 
@@ -180,14 +184,15 @@ class _LotteryHistoryDetailScreenState extends State<LotteryHistoryDetailScreen>
   @override
   Widget build(BuildContext context) {
     if (_isInitialLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final poolNames = _lotteryRecords.map((r) => r.poolName).toSet().toList()..sort();
+    final poolNames = _lotteryRecords.map((r) => r.poolName).toSet().toList()
+      ..sort();
     final filteredRecords = _filter.selectedPool != null
-        ? _lotteryRecords.where((r) => r.poolName == _filter.selectedPool).toList()
+        ? _lotteryRecords
+              .where((r) => r.poolName == _filter.selectedPool)
+              .toList()
         : <LotteryRecord>[];
 
     return Scaffold(
@@ -244,7 +249,9 @@ class _LotteryHistoryDetailScreenState extends State<LotteryHistoryDetailScreen>
             title: '选择奖池',
             subtitle: '选择要查看历史记录的奖池',
             trailing: _buildDropdown(
-              value: poolNames.contains(_filter.selectedPool) ? _filter.selectedPool : null,
+              value: poolNames.contains(_filter.selectedPool)
+                  ? _filter.selectedPool
+                  : null,
               hint: '请选择奖池',
               items: poolNames,
               onChanged: (value) {
@@ -262,7 +269,9 @@ class _LotteryHistoryDetailScreenState extends State<LotteryHistoryDetailScreen>
               items: const ['全部记录', '按时间查看'],
               onChanged: (value) {
                 if (value != null) {
-                  _updateFilter(_filter.copyWith(viewMode: value, clearSort: true));
+                  _updateFilter(
+                    _filter.copyWith(viewMode: value, clearSort: true),
+                  );
                 }
               },
             ),
@@ -292,10 +301,7 @@ class _LotteryHistoryDetailScreenState extends State<LotteryHistoryDetailScreen>
           style: Theme.of(context).textTheme.bodyMedium,
           dropdownColor: Theme.of(context).cardColor,
           items: items.map((String value) {
-            return DropdownMenuItem<String>(
-              value: value,
-              child: Text(value),
-            );
+            return DropdownMenuItem<String>(value: value, child: Text(value));
           }).toList(),
           onChanged: onChanged,
         ),
@@ -327,12 +333,20 @@ class _LotteryHistoryDetailScreenState extends State<LotteryHistoryDetailScreen>
                 final maxWidth = constraints.maxWidth;
                 final isCompact = maxWidth < 600;
                 final isVeryCompact = maxWidth < 430;
-                final columnSpacing = isVeryCompact ? 8.0 : (isCompact ? 12.0 : 24.0);
-                final horizontalMargin = isVeryCompact ? 8.0 : (isCompact ? 12.0 : 24.0);
-                final tableFontSize = isVeryCompact ? 11.0 : (isCompact ? 12.0 : null);
+                final columnSpacing = isVeryCompact
+                    ? 8.0
+                    : (isCompact ? 12.0 : 24.0);
+                final horizontalMargin = isVeryCompact
+                    ? 8.0
+                    : (isCompact ? 12.0 : 24.0);
+                final tableFontSize = isVeryCompact
+                    ? 11.0
+                    : (isCompact ? 12.0 : null);
 
                 final baseStyle = Theme.of(context).textTheme.bodyMedium;
-                final tableTextStyle = baseStyle?.copyWith(fontSize: tableFontSize);
+                final tableTextStyle = baseStyle?.copyWith(
+                  fontSize: tableFontSize,
+                );
 
                 return DataTable(
                   headingRowColor: WidgetStateProperty.resolveWith((states) {
@@ -351,10 +365,12 @@ class _LotteryHistoryDetailScreenState extends State<LotteryHistoryDetailScreen>
                       label: Text(entry.value, style: tableTextStyle),
                       onSort: _canSort(entry.key)
                           ? (columnIndex, ascending) {
-                              _updateFilter(_filter.copyWith(
-                                sortColumn: columnIndex,
-                                sortAscending: ascending,
-                              ));
+                              _updateFilter(
+                                _filter.copyWith(
+                                  sortColumn: columnIndex,
+                                  sortAscending: ascending,
+                                ),
+                              );
                             }
                           : null,
                     );
@@ -362,9 +378,9 @@ class _LotteryHistoryDetailScreenState extends State<LotteryHistoryDetailScreen>
                   rows: displayData.map((row) {
                     return DataRow(
                       cells: row.map((cell) {
-                        return DataCell(Center(
-                          child: Text(cell, style: tableTextStyle),
-                        ));
+                        return DataCell(
+                          Center(child: Text(cell, style: tableTextStyle)),
+                        );
                       }).toList(),
                     );
                   }).toList(),

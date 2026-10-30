@@ -9,6 +9,7 @@ import '../models/lottery_record.dart';
 import '../models/student.dart';
 import '../services/auth/token_manager.dart';
 import '../services/cloud/cloud_sync_service.dart';
+import '../services/cloud/student_sync.dart';
 import '../services/cloud/sync_identity.dart';
 import '../services/cloud/sync_state.dart';
 import '../services/data_service.dart';
@@ -55,6 +56,25 @@ class AppProvider with ChangeNotifier {
   static const Duration _cloudDebounceDelay = Duration(seconds: 5);
   static const String _kAutoSyncPrefKey = 'cloud_auto_sync_enabled';
 
+  // 账号工作区
+  Future<void>? _loadFuture;
+  String _workspaceKey = DataService.guestWorkspace;
+  String? _authUserId;
+  int _workspaceEpoch = 0;
+  bool _workspaceReady = true;
+  Future<void> _authChange = Future<void>.value();
+
+  // 学生同步状态
+  int _studentClock = 0;
+  int _studentSeq = 0;
+  bool _studentsDirty = false;
+  Map<String, StudentTombstone> _studentTombstones = {};
+  bool _clearsDirty = false;
+  DateTime? _clearedRollcallAll;
+  DateTime? _clearedLotteryAll;
+  Map<String, Map<String, DateTime>> _clearedClasses = {};
+  Map<String, DateTime> _clearedPools = {};
+
   int _selectCount = 1;
   bool _fairDrawEnabled = true;
   bool _nonRepeatEnabled = true;
@@ -89,8 +109,15 @@ class AppProvider with ChangeNotifier {
   bool get cloudLoggedIn => _isLoggedIn;
 
   AppProvider({CloudSyncService? cloudSyncService})
-      : _cloudSyncService = cloudSyncService ?? CloudSyncService() {
-    _loadData();
+    : _cloudSyncService = cloudSyncService ?? CloudSyncService() {
+    _startLoad();
+  }
+
+  /// 首次本地数据加载完成；测试和 UI 用它替代轮询 [totalCount]。
+  Future<void> get ready => _loadFuture ?? Future<void>.value();
+
+  void _startLoad() {
+    _loadFuture = _loadData();
   }
 
   /// 重新加载所有数据（用于导入后刷新）
@@ -99,9 +126,10 @@ class AppProvider with ChangeNotifier {
   }
 
   Future<void> _loadData() async {
+    _workspaceKey = DataService.currentWorkspace;
     _cloudSyncEnabled =
         (await SharedPreferences.getInstance()).getBool(_kAutoSyncPrefKey) ??
-            true;
+        true;
     _allStudents = await _dataService.loadStudents();
     _history = await _dataService.loadHistory();
     _deviceId = null;
@@ -110,11 +138,33 @@ class AppProvider with ChangeNotifier {
     } catch (_) {
       // 测试环境/无安全存储时降级；云操作仍需登录后才可用
     }
+    if (_deviceId == null || _deviceId!.isEmpty) {
+      // 测试或安全存储不可用时，与服务层保持同一设备 ID，避免学生 uid 落到 unknown。
+      try {
+        _deviceId = await _cloudSyncService.resolveDeviceId();
+      } catch (_) {
+        // 仍不可用：保留 null，后续按 'unknown' 处理。
+      }
+    }
     final syncState = await _cloudSyncService.loadState();
     _ownRollcallStats = DrawStats(syncState.ownRollcallStats);
     _ownLotteryStats = DrawStats(syncState.ownLotteryStats);
     _rollcallStats = DrawStats(syncState.ownRollcallStats);
     _lotteryStats = DrawStats(syncState.ownLotteryStats);
+    _studentClock = syncState.studentClock;
+    _studentSeq = syncState.studentSeq;
+    _studentsDirty = syncState.studentsDirty;
+    _studentTombstones = Map<String, StudentTombstone>.from(
+      syncState.studentTombstones,
+    );
+    _clearsDirty = syncState.clearsDirty;
+    _clearedRollcallAll = syncState.clearedAt['rollcall'];
+    _clearedLotteryAll = syncState.clearedAt['lottery'];
+    _clearedClasses = {
+      for (final entry in syncState.clearedClasses.entries)
+        entry.key: Map<String, DateTime>.from(entry.value),
+    };
+    _clearedPools = Map<String, DateTime>.from(syncState.clearedPools);
     await _migrateLegacySyncData(syncState);
 
     final config = await _dataService.loadConfig();
@@ -191,9 +241,9 @@ class AppProvider with ChangeNotifier {
       lotteryAnimationMode: _lotteryAnimationMode,
     );
 
-    _pendingConfigSave = _pendingConfigSave.catchError((_) {}).then(
-      (_) => _dataService.saveConfig(config),
-    );
+    _pendingConfigSave = _pendingConfigSave
+        .catchError((_) {})
+        .then((_) => _dataService.saveConfig(config));
 
     await _pendingConfigSave;
   }
@@ -252,16 +302,7 @@ class AppProvider with ChangeNotifier {
     final updated = <Student>[];
     for (final s in _allStudents) {
       if (s.className == className && s.group == oldName) {
-        updated.add(
-          Student(
-            id: s.id,
-            name: s.name,
-            gender: s.gender,
-            group: newName,
-            className: s.className,
-            exist: s.exist,
-          ),
-        );
+        updated.add(_touchStudent(s.copyWith(group: newName)));
         changed = true;
       } else {
         updated.add(s);
@@ -271,7 +312,8 @@ class AppProvider with ChangeNotifier {
     if (changed) {
       _allStudents = updated;
       await _dataService.saveStudents(_allStudents);
-      _markCloudDirty();
+      _markStudentsChanged();
+      await _persistStudentSyncState();
       _resetRemaining();
     }
     await _saveConfig();
@@ -290,16 +332,7 @@ class AppProvider with ChangeNotifier {
     final updated = <Student>[];
     for (final s in _allStudents) {
       if (s.className == className && s.group == groupName) {
-        updated.add(
-          Student(
-            id: s.id,
-            name: s.name,
-            gender: s.gender,
-            group: '1',
-            className: s.className,
-            exist: s.exist,
-          ),
-        );
+        updated.add(_touchStudent(s.copyWith(group: '1')));
         changed = true;
       } else {
         updated.add(s);
@@ -309,7 +342,8 @@ class AppProvider with ChangeNotifier {
     if (changed) {
       _allStudents = updated;
       await _dataService.saveStudents(_allStudents);
-      _markCloudDirty();
+      _markStudentsChanged();
+      await _persistStudentSyncState();
       _resetRemaining();
     }
     await _saveConfig();
@@ -344,16 +378,7 @@ class AppProvider with ChangeNotifier {
     final updated = <Student>[];
     for (final s in _allStudents) {
       if (s.className == oldName) {
-        updated.add(
-          Student(
-            id: s.id,
-            name: s.name,
-            gender: s.gender,
-            group: s.group,
-            className: normalized,
-            exist: s.exist,
-          ),
-        );
+        updated.add(_touchStudent(s.copyWith(className: normalized)));
         changed = true;
       } else {
         updated.add(s);
@@ -368,7 +393,8 @@ class AppProvider with ChangeNotifier {
     if (changed) {
       _allStudents = updated;
       await _dataService.saveStudents(_allStudents);
-      _markCloudDirty();
+      _markStudentsChanged();
+      await _persistStudentSyncState();
       _resetRemaining();
     }
 
@@ -385,9 +411,16 @@ class AppProvider with ChangeNotifier {
 
     _groups.remove(className);
 
+    final removed = _allStudents
+        .where((s) => s.className == className)
+        .toList();
+    for (final student in removed) {
+      _tombstoneStudent(student);
+    }
     _allStudents.removeWhere((s) => s.className == className);
     await _dataService.saveStudents(_allStudents);
-    _markCloudDirty();
+    _markStudentsChanged();
+    await _persistStudentSyncState();
     _resetRemaining();
 
     _classGroups.remove(className);
@@ -410,6 +443,68 @@ class AppProvider with ChangeNotifier {
   ///
   /// 新设备首次登录时本地只有占位班级 "1"，必须按拉取到的名单重建班级列表，
   /// 否则点名/抽奖页面仍按 "1" 筛选，看起来像名单没刷新。
+  String get _deviceIdOrUnknown => _deviceId ?? 'unknown';
+
+  String _nextStudentUid() {
+    _studentSeq += 1;
+    return '$_deviceIdOrUnknown:s$_studentSeq';
+  }
+
+  Student _touchStudent(Student student) {
+    _studentClock += 1;
+    return student.copyWith(rev: _studentClock, revBy: _deviceIdOrUnknown);
+  }
+
+  void _tombstoneStudent(Student student) {
+    if (student.uid.isEmpty) return;
+    _studentClock += 1;
+    _studentTombstones[student.uid] = StudentTombstone(
+      rev: _studentClock,
+      by: _deviceIdOrUnknown,
+      at: DateTime.now(),
+    );
+  }
+
+  /// 学生修订/序号/墓碑/脏标记落盘到 sync_state.json。
+  Future<void> _persistStudentSyncState() async {
+    final state = await _cloudSyncService.loadState();
+    state.studentClock = _studentClock;
+    state.studentSeq = _studentSeq;
+    state.studentsDirty = _studentsDirty;
+    state.studentTombstones
+      ..clear()
+      ..addAll(_studentTombstones);
+    await _cloudSyncService.saveState();
+  }
+
+  void _markStudentsChanged() {
+    _studentsDirty = true;
+    _markCloudDirty();
+  }
+
+  CloudClearState _localClearState() => CloudClearState(
+    rollcallAll: _clearedRollcallAll,
+    lotteryAll: _clearedLotteryAll,
+    rollcallClasses: _clearedClasses['rollcall'] ?? const {},
+    lotteryPools: _clearedPools,
+  );
+
+  Future<void> _persistClearSyncState() async {
+    final state = await _cloudSyncService.loadState();
+    state.clearsDirty = _clearsDirty;
+    _localClearState().applyTo(state);
+    await _cloudSyncService.saveState();
+  }
+
+  void _setLocalClears(CloudClearState merged) {
+    _clearedRollcallAll = merged.rollcallAll;
+    _clearedLotteryAll = merged.lotteryAll;
+    _clearedClasses['rollcall'] = Map<String, DateTime>.from(
+      merged.rollcallClasses,
+    );
+    _clearedPools = Map<String, DateTime>.from(merged.lotteryPools);
+  }
+
   Future<void> _applyPulledStudents() async {
     _selectedGroup = null;
     _selectedGender = null;
@@ -560,18 +655,22 @@ class AppProvider with ChangeNotifier {
     }
 
     _allStudents.add(
-      Student(
-        id: newId,
-        name: normalizedName,
-        gender: gender,
-        group: normalizedGroup,
-        className: normalizedClass,
-        exist: exist,
+      _touchStudent(
+        Student(
+          id: newId,
+          uid: _nextStudentUid(),
+          name: normalizedName,
+          gender: gender,
+          group: normalizedGroup,
+          className: normalizedClass,
+          exist: exist,
+        ),
       ),
     );
 
     await _dataService.saveStudents(_allStudents);
-    _markCloudDirty();
+    _markStudentsChanged();
+    await _persistStudentSyncState();
     _resetRemaining();
     await _saveConfig();
     notifyListeners();
@@ -597,25 +696,33 @@ class AppProvider with ChangeNotifier {
         ? '1'
         : (group ?? old.group).trim();
 
-    _allStudents[index] = Student(
-      id: old.id,
-      name: nextName,
-      gender: gender ?? old.gender,
-      group: nextGroup,
-      className: old.className,
-      exist: exist ?? old.exist,
+    _allStudents[index] = _touchStudent(
+      old.copyWith(
+        name: nextName,
+        gender: gender ?? old.gender,
+        group: nextGroup,
+        exist: exist ?? old.exist,
+      ),
     );
 
     await _dataService.saveStudents(_allStudents);
-    _markCloudDirty();
+    _markStudentsChanged();
+    await _persistStudentSyncState();
     _resetRemaining();
     notifyListeners();
   }
 
   Future<void> deleteStudentFromClass(String className, int id) async {
+    final removed = _allStudents
+        .where((s) => s.className == className && s.id == id)
+        .toList();
+    for (final student in removed) {
+      _tombstoneStudent(student);
+    }
     _allStudents.removeWhere((s) => s.className == className && s.id == id);
     await _dataService.saveStudents(_allStudents);
-    _markCloudDirty();
+    _markStudentsChanged();
+    await _persistStudentSyncState();
     _resetRemaining();
     notifyListeners();
   }
@@ -689,7 +796,8 @@ class AppProvider with ChangeNotifier {
         .where((s) => s.className == normalizedClass)
         .toList();
     if (classStudents.isNotEmpty) {
-      newId = classStudents.map((s) => s.id).reduce((a, b) => a > b ? a : b) + 1;
+      newId =
+          classStudents.map((s) => s.id).reduce((a, b) => a > b ? a : b) + 1;
     }
 
     final totalStudents = names.length;
@@ -719,13 +827,16 @@ class AppProvider with ChangeNotifier {
       }
 
       _allStudents.add(
-        Student(
-          id: newId,
-          name: name,
-          gender: gender,
-          group: group,
-          className: normalizedClass,
-          exist: exist,
+        _touchStudent(
+          Student(
+            id: newId,
+            uid: _nextStudentUid(),
+            name: name,
+            gender: gender,
+            group: group,
+            className: normalizedClass,
+            exist: exist,
+          ),
         ),
       );
       newId++;
@@ -738,7 +849,10 @@ class AppProvider with ChangeNotifier {
     }
 
     await _dataService.saveStudents(_allStudents);
-    _markCloudDirty();
+    if (successCount > 0) {
+      _markStudentsChanged();
+      await _persistStudentSyncState();
+    }
     _resetRemaining();
     await _saveConfig();
     notifyListeners();
@@ -747,15 +861,47 @@ class AppProvider with ChangeNotifier {
   }
 
   Future<void> clearHistory({String? className}) async {
+    final now = DateTime.now();
     if (className != null) {
-      _history = _history.where((record) => record.className != className).toList();
+      _history = _history
+          .where((record) => record.className != className)
+          .toList();
+      (_clearedClasses['rollcall'] ??= {})[className] = now;
+      await _cloudSyncService.removeFromOutboxWhere(
+        'rollcall',
+        (record) => record['class_name']?.toString() == className,
+      );
     } else {
       _history = [];
-      await _cloudSyncService.markCleared('rollcall', DateTime.now());
+      _clearedRollcallAll = now;
+      await _cloudSyncService.markCleared('rollcall', now);
     }
     await _dataService.clearHistoryRecords(className: className);
+    _clearsDirty = true;
+    await _persistClearSyncState();
     _markCloudDirty();
+    await _trySyncClears();
     notifyListeners();
+  }
+
+  /// 同步清空文档；离线/未登录时保留 [clearsDirty]，下一次推送重试。
+  Future<void> _trySyncClears() async {
+    if (!_isLoggedIn ||
+        !_clearsDirty ||
+        _isDisposed ||
+        !_workspaceReady ||
+        _overwriteInProgress) {
+      return;
+    }
+    try {
+      final merged = await _cloudSyncService.syncClears(_localClearState());
+      if (_isDisposed) return;
+      _setLocalClears(merged);
+      _clearsDirty = false;
+      await _persistClearSyncState();
+    } catch (e) {
+      logger.w('清空文档同步失败，保留待推送标记', error: e);
+    }
   }
 
   Future<void> startRollCall() async {
@@ -790,7 +936,9 @@ class AppProvider with ChangeNotifier {
 
   Future<void> finalizeRollCall({int? sessionId}) async {
     final activeSessionId = sessionId ?? _rollCallSessionId;
-    if (!_isRolling || _isFinalizingRollCall || activeSessionId != _rollCallSessionId) {
+    if (!_isRolling ||
+        _isFinalizingRollCall ||
+        activeSessionId != _rollCallSessionId) {
       return;
     }
 
@@ -807,7 +955,9 @@ class AppProvider with ChangeNotifier {
 
       if (_nonRepeatEnabled) {
         for (final student in picked) {
-          _remainingStudents.removeWhere((remaining) => remaining.id == student.id);
+          _remainingStudents.removeWhere(
+            (remaining) => remaining.id == student.id,
+          );
         }
       }
 
@@ -854,15 +1004,15 @@ class AppProvider with ChangeNotifier {
         );
       }
     } else {
-      picked = _randomService.pickRandomStudents(
-        drawCandidates,
-        _selectCount,
-      );
+      picked = _randomService.pickRandomStudents(drawCandidates, _selectCount);
     }
     return picked;
   }
 
-  Future<HistoryRecord> _buildRollCallRecord(String className, List<Student> picked) async {
+  Future<HistoryRecord> _buildRollCallRecord(
+    String className,
+    List<Student> picked,
+  ) async {
     final now = DateTime.now();
     final timeStr =
         "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')} "
@@ -891,18 +1041,150 @@ class AppProvider with ChangeNotifier {
 
   /// 登录态下发（由 main.dart 监听 AuthProvider 转发）
   ///
-  /// false→true：执行一次 pull-merge + push 初始同步；
-  /// true→false：取消防抖与重试，保留脏标记。
-  void setAuthState(bool loggedIn) {
-    if (loggedIn == _isLoggedIn) return;
-    _isLoggedIn = loggedIn;
-    if (loggedIn) {
-      unawaited(_initialSyncAfterLogin());
-    } else {
-      _cloudDebounceTimer?.cancel();
-      _cloudSyncService.cancelRetries();
+  /// 未登录 → guest 工作区；已登录且 [userId] 非空 → 该账号的工作区；
+  /// 已登录但 [userId] 为空 → 保留当前工作区（测试/旧调用兼容）。
+  ///
+  /// 工作区切换串行执行：切到新账号时先建目录、加载空数据，再决定从云端
+  /// 克隆还是初始化空基线；克隆完成前 [_workspaceReady] 为 false，推送/拉取
+  /// 会被拒绝，避免把空工作区覆盖到真实云端数据上。
+  Future<void> setAuthState(bool loggedIn, {String? userId}) {
+    final normalizedUser =
+        loggedIn && userId != null && userId.trim().isNotEmpty
+        ? userId.trim()
+        : null;
+    final future = _authChange
+        .catchError((_) {})
+        .then((_) => _performAuthChange(loggedIn, normalizedUser));
+    _authChange = future;
+    return future;
+  }
+
+  Future<void> _performAuthChange(bool loggedIn, String? userId) async {
+    if (_isDisposed) return;
+
+    final targetWorkspace = !loggedIn
+        ? DataService.guestWorkspace
+        : (userId == null
+              ? _workspaceKey
+              : DataService.workspaceKeyForUser(userId));
+
+    final unchanged =
+        loggedIn == _isLoggedIn &&
+        userId == _authUserId &&
+        targetWorkspace == _workspaceKey &&
+        targetWorkspace == DataService.currentWorkspace;
+    if (unchanged) return;
+
+    _cloudDebounceTimer?.cancel();
+    _cloudDebounceTimer = null;
+    _cloudSyncService.cancelRetries();
+
+    try {
+      await ready;
+    } catch (_) {
+      // 初次加载失败也要允许切换工作区。
     }
+    try {
+      await waitForPendingConfigSave();
+    } catch (_) {
+      // 配置保存失败不应阻塞账号切换。
+    }
+    if (_isDisposed) return;
+
+    _workspaceEpoch++;
+    final epoch = _workspaceEpoch;
+
+    final switchingWorkspace = targetWorkspace != DataService.currentWorkspace;
+    var isNewWorkspace = false;
+
+    if (switchingWorkspace) {
+      if (targetWorkspace != DataService.guestWorkspace) {
+        isNewWorkspace = !await DataService.workspaceExists(targetWorkspace);
+        if (isNewWorkspace) {
+          await DataService.ensureWorkspace(targetWorkspace);
+        }
+      }
+      if (_isDisposed || epoch != _workspaceEpoch) return;
+
+      DataService.setWorkspace(targetWorkspace);
+      _cloudSyncService.resetWorkspaceState();
+      // 新工作区在克隆完成前不可同步；已有工作区加载后即可用。
+      _workspaceReady = !isNewWorkspace;
+    } else {
+      _workspaceReady = true;
+    }
+
+    _isLoggedIn = loggedIn;
+    _authUserId = userId;
+    _cloudDirty = false;
+
+    await _loadData();
+    if (_isDisposed || epoch != _workspaceEpoch) return;
+
+    if (!loggedIn) {
+      _workspaceReady = true;
+      _notifyIfActive();
+      return;
+    }
+
+    if (isNewWorkspace) {
+      final ok = await _initializeWorkspaceFromCloud();
+      if (_isDisposed || epoch != _workspaceEpoch) return;
+      _workspaceReady = ok;
+      _notifyIfActive();
+      return;
+    }
+
+    _workspaceReady = true;
+    await _initialSyncAfterLogin();
     _notifyIfActive();
+  }
+
+  /// 新账号工作区首次初始化。
+  ///
+  /// 云端有数据时严格克隆；云端为空时只写空基线，绝不上传 guest 数据。
+  /// 失败时保留 `baselineInitialized = false`，等待下次登录或手动同步重试。
+  Future<bool> _initializeWorkspaceFromCloud() async {
+    if (_isDisposed) return false;
+
+    bool cloudHasData;
+    try {
+      cloudHasData = await _cloudSyncService.cloudHasAnyData();
+    } catch (e) {
+      logger.w('账号工作区初始化：检查云端数据失败，稍后重试', error: e);
+      return false;
+    }
+    if (_isDisposed) return false;
+
+    if (!cloudHasData) {
+      _overwriteInProgress = true;
+      try {
+        final state = await _cloudSyncService.loadState();
+        state.baselineInitialized = true;
+        state.legacyUploaded = true;
+        await _cloudSyncService.saveState();
+        await _cloudSyncService.clearOutbox();
+        _cloudDirty = false;
+        return true;
+      } catch (e) {
+        logger.e('账号工作区空基线写入失败', error: e);
+        return false;
+      } finally {
+        _overwriteInProgress = false;
+      }
+    }
+
+    return _initializeLocalBaselineFromCloud();
+  }
+
+  /// 首次登录失败后，手动同步/回前台时重试工作区初始化。
+  Future<bool> _retryWorkspaceInitialization() async {
+    if (_workspaceReady) return true;
+    final ok = await _initializeWorkspaceFromCloud();
+    if (_isDisposed) return false;
+    _workspaceReady = ok;
+    _notifyIfActive();
+    return ok;
   }
 
   bool get _canSync => !_isDisposed && _cloudSyncEnabled && _isLoggedIn;
@@ -933,7 +1215,9 @@ class AppProvider with ChangeNotifier {
 
     if (!syncState.legacyUploaded) {
       if (syncState.ownRollcallStats.isEmpty && history.isNotEmpty) {
-        _ownRollcallStats = DrawStats.fromHistoryNames(history.map((r) => r.name));
+        _ownRollcallStats = DrawStats.fromHistoryNames(
+          history.map((r) => r.name),
+        );
         _rollcallStats = DrawStats(_ownRollcallStats.toMap());
         syncState.ownRollcallStats
           ..clear()
@@ -946,11 +1230,45 @@ class AppProvider with ChangeNotifier {
           ..clear()
           ..addAll(_ownLotteryStats.toMap());
       }
-      await _cloudSyncService.enqueueAll('rollcall', history.map((r) => r.toJson()));
-      await _cloudSyncService.enqueueAll('lottery', lottery.map((r) => r.toJson()));
+      await _cloudSyncService.enqueueAll(
+        'rollcall',
+        history.map((r) => r.toJson()),
+      );
+      await _cloudSyncService.enqueueAll(
+        'lottery',
+        lottery.map((r) => r.toJson()),
+      );
       syncState.legacyUploaded = true;
       await _cloudSyncService.saveState();
     }
+
+    // 升级迁移：本地名单不是旧版默认 40 人占位，就视为用户数据，首次登录
+    // 必须走并集合并，不能被云端空/新快照直接覆盖。
+    if (!_studentsDirty &&
+        _studentClock == 0 &&
+        _allStudents.isNotEmpty &&
+        !_isLegacyDefaultRoster(_allStudents)) {
+      _studentsDirty = true;
+      syncState.studentsDirty = true;
+      await _cloudSyncService.saveState();
+    }
+  }
+
+  bool _isLegacyDefaultRoster(List<Student> students) {
+    if (students.length != 40) return false;
+    for (var index = 0; index < 40; index++) {
+      final id = index + 1;
+      final student = students[index];
+      if (student.id != id ||
+          student.name != '学生 $id' ||
+          student.gender != (index % 2 == 0 ? '男' : '女') ||
+          student.group != '1' ||
+          student.className != '1' ||
+          !student.exist) {
+        return false;
+      }
+    }
+    return true;
   }
 
   Future<void> _initialSyncAfterLogin() async {
@@ -979,8 +1297,12 @@ class AppProvider with ChangeNotifier {
     );
 
     if (!cloudHasData) {
-      // 云端为空：本地是唯一数据源，把完整本地历史补传。
+      // 云端为空：本地是唯一数据源，把完整本地历史与名单补传。
       await _enqueueAllLocalHistory(localHistory, localLottery);
+      if (_allStudents.isNotEmpty) {
+        _studentsDirty = true;
+        await _persistStudentSyncState();
+      }
       await _pushAfterInitialSync();
       return;
     }
@@ -1015,7 +1337,13 @@ class AppProvider with ChangeNotifier {
         state.clearedAt.isNotEmpty ||
         state.pulled.isNotEmpty ||
         state.ownRollcallStats.isNotEmpty ||
-        state.ownLotteryStats.isNotEmpty;
+        state.ownLotteryStats.isNotEmpty ||
+        state.studentsDirty ||
+        state.studentClock > 0 ||
+        state.studentTombstones.isNotEmpty ||
+        state.clearsDirty ||
+        state.clearedClasses.isNotEmpty ||
+        state.clearedPools.isNotEmpty;
   }
 
   Future<void> _pushAfterInitialSync() async {
@@ -1051,32 +1379,54 @@ class AppProvider with ChangeNotifier {
       if (snapshot == null || _isDisposed) return false;
 
       // 1. 点名历史：整体替换（写盘后重载，保证内存与磁盘一致）
-      final cloudHistory = snapshot.rollcallRecords
-          .map((json) => HistoryRecord.fromJson(json))
-          .toList()
-        ..sort((a, b) => b.id.compareTo(a.id));
+      final cloudHistory = _filterHistoryByClears(
+        snapshot.rollcallRecords
+            .map((json) => HistoryRecord.fromJson(json))
+            .toList(),
+        snapshot.clearState,
+      )..sort((a, b) => b.id.compareTo(a.id));
       // 2. 抽奖记录：整体替换
-      final cloudLottery = snapshot.lotteryRecords
-          .map((json) => LotteryRecord.fromJson(json))
-          .toList();
+      final cloudLottery = _filterLotteryByClears(
+        snapshot.lotteryRecords
+            .map((json) => LotteryRecord.fromJson(json))
+            .toList(),
+        snapshot.clearState,
+      );
 
       // 先在内存/磁盘落地数据，全部成功后才重置同步状态（outbox/游标），
       // 保证"覆盖失败=本地不变"，不会清掉待上传队列。
       _allStudents = snapshot.students;
+      _studentTombstones = Map<String, StudentTombstone>.from(
+        snapshot.studentTombstones,
+      );
+      _studentClock = _maxStudentClock(
+        _studentClock,
+        snapshot.students,
+        snapshot.studentTombstones,
+      );
+      _studentsDirty = false;
+      _setLocalClears(snapshot.clearState);
+      _clearsDirty = false;
       await _dataService.saveStudents(_allStudents);
       await _dataService.saveHistory(cloudHistory);
       _history = await _dataService.loadHistory();
       await _dataService.saveLotteryRecords(cloudLottery);
 
       // 3. 统计：总视图=全部设备贡献求和；own=本机在云端的贡献
-      _rollcallStats =
-          _mergeStats(DrawStats(), snapshot.rollcallContributions.values);
-      _lotteryStats =
-          _mergeStats(DrawStats(), snapshot.lotteryContributions.values);
-      _ownRollcallStats =
-          DrawStats(snapshot.rollcallContributions[deviceId] ?? const {});
-      _ownLotteryStats =
-          DrawStats(snapshot.lotteryContributions[deviceId] ?? const {});
+      _rollcallStats = _mergeStats(
+        DrawStats(),
+        snapshot.rollcallContributions.values,
+      );
+      _lotteryStats = _mergeStats(
+        DrawStats(),
+        snapshot.lotteryContributions.values,
+      );
+      _ownRollcallStats = DrawStats(
+        snapshot.rollcallContributions[deviceId] ?? const {},
+      );
+      _ownLotteryStats = DrawStats(
+        snapshot.lotteryContributions[deviceId] ?? const {},
+      );
 
       // 4. 同步状态一次性落盘（数据已成功写入，此时才清 outbox/游标）
       final state = await _cloudSyncService.loadState();
@@ -1096,9 +1446,14 @@ class AppProvider with ChangeNotifier {
         ..clear()
         ..addAll(_ownLotteryStats.toMap());
       state.pulled.clear(); // 本地已等于云端，下次增量拉取按 uid 去重即可
-      // 覆盖是"以云端为准"，本地此前的清空语义不再适用：保留 clearedAt 会让
-      // 后续增量拉取过滤掉刚被覆盖进来的云端旧记录，与覆盖结果矛盾，故清空。
-      state.clearedAt.clear();
+      // 覆盖是"以云端为准"：清空文档同样以云端为准。
+      state.studentClock = _studentClock;
+      state.studentsDirty = false;
+      state.studentTombstones
+        ..clear()
+        ..addAll(_studentTombstones);
+      state.clearsDirty = false;
+      snapshot.clearState.applyTo(state);
       state.legacyUploaded = true;
       state.baselineInitialized = true;
       await _cloudSyncService.saveState();
@@ -1125,15 +1480,22 @@ class AppProvider with ChangeNotifier {
     _overwriteInProgress = true;
     try {
       final deviceId = await _cloudSyncService.resolveDeviceId();
-      final localHistory =
-          await _ensureHistoryUids(await _dataService.loadHistory());
-      final localLottery =
-          await _ensureLotteryUids(await _dataService.loadLotteryRecords());
+      final localHistory = await _ensureHistoryUids(
+        await _dataService.loadHistory(),
+      );
+      final localLottery = await _ensureLotteryUids(
+        await _dataService.loadLotteryRecords(),
+      );
       final localStudents = _allStudents;
       final state = await _cloudSyncService.loadState();
 
       final snapshot = await _cloudSyncService.pullFullSnapshot();
       if (snapshot == null || _isDisposed) return false;
+
+      final mergedClears = mergeClearStates(
+        _localClearState(),
+        snapshot.clearState,
+      );
 
       final allCloudHistory = snapshot.rollcallRecords
           .map((json) => HistoryRecord.fromJson(json))
@@ -1147,48 +1509,63 @@ class AppProvider with ChangeNotifier {
       final cloudHistoryUids = allCloudHistory.map((r) => r.uid!).toSet();
       final cloudLotteryUids = allCloudLottery.map((r) => r.uid!).toSet();
 
-      // clearedAt 是本机的清空语义：云端里比清空时间更早的记录不合并回来。
-      final visibleCloudHistory = allCloudHistory
-          .where((record) => _isAfterClear(
-                'rollcall',
-                state,
-                DateTime.tryParse(record.drawTime),
-              ))
-          .toList();
-      final visibleCloudLottery = allCloudLottery
-          .where((record) =>
-              _isAfterClear('lottery', state, record.drawTime))
-          .toList();
+      final visibleCloudHistory = _filterHistoryByClears(
+        allCloudHistory,
+        mergedClears,
+      );
+      final visibleCloudLottery = _filterLotteryByClears(
+        allCloudLottery,
+        mergedClears,
+      );
+      final visibleLocalHistory = _filterHistoryByClears(
+        localHistory,
+        mergedClears,
+      );
+      final visibleLocalLottery = _filterLotteryByClears(
+        localLottery,
+        mergedClears,
+      );
 
-      final localOnlyHistory = localHistory
+      final localOnlyHistory = visibleLocalHistory
           .where((record) => !cloudHistoryUids.contains(record.uid))
           .toList();
-      final localOnlyLottery = localLottery
+      final localOnlyLottery = visibleLocalLottery
           .where((record) => !cloudLotteryUids.contains(record.uid))
           .toList();
 
       final mergedHistory = <String, HistoryRecord>{
         for (final record in visibleCloudHistory) record.uid!: record,
-        for (final record in localHistory) record.uid!: record,
-      }.values.toList()
-        ..sort((a, b) => b.drawTime.compareTo(a.drawTime));
+        for (final record in visibleLocalHistory) record.uid!: record,
+      }.values.toList()..sort((a, b) => b.drawTime.compareTo(a.drawTime));
       final mergedLottery = <String, LotteryRecord>{
         for (final record in visibleCloudLottery) record.uid!: record,
-        for (final record in localLottery) record.uid!: record,
-      }.values.toList()
-        ..sort((a, b) => b.drawTime.compareTo(a.drawTime));
+        for (final record in visibleLocalLottery) record.uid!: record,
+      }.values.toList()..sort((a, b) => b.drawTime.compareTo(a.drawTime));
 
       await _dataService.saveHistory(mergedHistory);
       _history = await _dataService.loadHistory();
       await _dataService.saveLotteryRecords(mergedLottery);
 
-      // 名单仍以云端优先；云端没有名单时保留本地，随本次 push 上传。
-      if (snapshot.students.isNotEmpty) {
-        _allStudents = snapshot.students;
+      // 名单按 uid/修订合并；本地独有学生保留，随本次 push 上传。
+      final studentMerge = mergeStudents(
+        local: localStudents,
+        localTombstones: _studentTombstones,
+        cloud: snapshot.students,
+        cloudTombstones: snapshot.studentTombstones,
+        deviceId: deviceId,
+        studentClock: _studentClock,
+      );
+      _studentClock = studentMerge.studentClock;
+      _studentTombstones = Map<String, StudentTombstone>.from(
+        studentMerge.tombstones,
+      );
+      _allStudents = studentMerge.students;
+      if (studentMerge.changed) {
         await _dataService.saveStudents(_allStudents);
-      } else {
-        _allStudents = localStudents;
       }
+      _studentsDirty = studentMerge.needsPush;
+      _setLocalClears(mergedClears);
+      _clearsDirty = !mergedClears.semanticallyEquals(snapshot.clearState);
 
       // 统计：云端总视图 + 本机贡献 max(本地, 云端)，保留本地独有记录贡献。
       final ownRollcall = DrawStats(
@@ -1228,6 +1605,13 @@ class AppProvider with ChangeNotifier {
         ..clear()
         ..addAll(_ownLotteryStats.toMap());
       state.pulled.clear();
+      state.studentClock = _studentClock;
+      state.studentsDirty = _studentsDirty;
+      state.studentTombstones
+        ..clear()
+        ..addAll(_studentTombstones);
+      state.clearsDirty = _clearsDirty;
+      mergedClears.applyTo(state);
       state.legacyUploaded = true;
       state.baselineInitialized = true;
       await _cloudSyncService.saveState();
@@ -1235,6 +1619,7 @@ class AppProvider with ChangeNotifier {
       // 云端已有的记录从 outbox 移除；本地独有记录补入 outbox。
       await _cloudSyncService.removeFromOutbox('rollcall', cloudHistoryUids);
       await _cloudSyncService.removeFromOutbox('lottery', cloudLotteryUids);
+      await _pruneOutboxByClears(mergedClears);
       await _cloudSyncService.enqueueAll(
         'rollcall',
         localOnlyHistory.map((record) => record.toJson()),
@@ -1253,12 +1638,6 @@ class AppProvider with ChangeNotifier {
     } finally {
       _overwriteInProgress = false;
     }
-  }
-
-  bool _isAfterClear(String kind, LocalSyncState state, DateTime? time) {
-    final clearedAt = state.clearedAt[kind];
-    if (clearedAt == null) return true;
-    return time == null || !time.isBefore(clearedAt);
   }
 
   Future<List<HistoryRecord>> _ensureHistoryUids(
@@ -1306,8 +1685,9 @@ class AppProvider with ChangeNotifier {
       ..sort((a, b) => b.drawTime.compareTo(a.drawTime));
 
     if (_ownRollcallStats.toMap().isEmpty && historyWithUid.isNotEmpty) {
-      _ownRollcallStats =
-          DrawStats.fromHistoryNames(historyWithUid.map((r) => r.name));
+      _ownRollcallStats = DrawStats.fromHistoryNames(
+        historyWithUid.map((r) => r.name),
+      );
       _rollcallStats = DrawStats(_ownRollcallStats.toMap());
     }
     if (_ownLotteryStats.toMap().isEmpty && lotteryWithUid.isNotEmpty) {
@@ -1342,12 +1722,13 @@ class AppProvider with ChangeNotifier {
   Future<bool> syncLocalHistoryToCloud() async {
     if (!_isLoggedIn || _isDisposed || _overwriteInProgress) return false;
     try {
-      final history =
-          await _ensureHistoryUids(await _dataService.loadHistory());
-      final lottery =
-          await _ensureLotteryUids(await _dataService.loadLotteryRecords());
-      _history = [...history]
-        ..sort((a, b) => b.drawTime.compareTo(a.drawTime));
+      final history = await _ensureHistoryUids(
+        await _dataService.loadHistory(),
+      );
+      final lottery = await _ensureLotteryUids(
+        await _dataService.loadLotteryRecords(),
+      );
+      _history = [...history]..sort((a, b) => b.drawTime.compareTo(a.drawTime));
 
       final snapshot = await _cloudSyncService.pullFullSnapshot();
       if (snapshot == null) {
@@ -1444,7 +1825,10 @@ class AppProvider with ChangeNotifier {
   }
 
   Future<void> _autoPushToCloud() async {
-    if (!_cloudSyncEnabled || !_isLoggedIn || _isDisposed || _overwriteInProgress) {
+    if (!_cloudSyncEnabled ||
+        !_isLoggedIn ||
+        _isDisposed ||
+        _overwriteInProgress) {
       return;
     }
     final ok = await _runPushAttempt();
@@ -1503,12 +1887,45 @@ class AppProvider with ChangeNotifier {
     return record.copyWith(uid: newRecordUid(_deviceId ?? 'unknown', seq));
   }
 
-  /// 抽奖历史清空后的本地语义：清 own 贡献 + 记 clearedAt + 清 outbox
+  /// 抽奖历史清空后的本地语义：清 own 贡献 + 记全局清空 + 清 outbox
   Future<void> markLotteryCleared() async {
+    final now = DateTime.now();
     _ownLotteryStats = DrawStats();
     _lotteryStats = DrawStats();
-    await _cloudSyncService.markCleared('lottery', DateTime.now());
+    _clearedLotteryAll = now;
+    await _cloudSyncService.markCleared('lottery', now);
     await _persistOwnStats();
+    _clearsDirty = true;
+    await _persistClearSyncState();
+    _markCloudDirty();
+    await _trySyncClears();
+    _notifyIfActive();
+  }
+
+  /// 清空抽奖历史；[poolName] 为空时清空全部，否则只清空该奖池。
+  ///
+  /// 本机立即生效并记录清空时间；离线时 [clearsDirty] 保留，下一次推送重试。
+  Future<void> clearLotteryHistory({String? poolName}) async {
+    final now = DateTime.now();
+    if (poolName == null) {
+      await _dataService.clearAllLotteryRecords();
+      _ownLotteryStats = DrawStats();
+      _lotteryStats = DrawStats();
+      _clearedLotteryAll = now;
+      await _cloudSyncService.markCleared('lottery', now);
+      await _persistOwnStats();
+    } else {
+      await _dataService.clearLotteryRecords(poolName);
+      _clearedPools[poolName] = now;
+      await _cloudSyncService.removeFromOutboxWhere(
+        'lottery',
+        (record) => record['poolName']?.toString() == poolName,
+      );
+    }
+    _clearsDirty = true;
+    await _persistClearSyncState();
+    _markCloudDirty();
+    await _trySyncClears();
     _notifyIfActive();
   }
 
@@ -1565,39 +1982,90 @@ class AppProvider with ChangeNotifier {
     );
   }
 
-  /// 推送：冲洗 outbox + own 统计贡献 + 学生名单
+  /// 推送：冲洗 outbox + own 统计贡献 + 学生名单（仅脏时）+ 清空文档（仅脏时）
   ///
   /// 未登录时静默跳过（不写 lastError）；覆盖进行中跳过，避免把半覆盖状态推上云。
   Future<bool> pushToCloud() async {
-    if (!_isLoggedIn || _overwriteInProgress) return false;
-    final future = _cloudSyncService.pushAll(
-      ownRollcall: _ownRollcallStats.toMap(),
-      ownLottery: _ownLotteryStats.toMap(),
-      students: _allStudents,
-    );
-    _notifyIfActive();
-    final ok = await future;
+    if (!_isLoggedIn || _overwriteInProgress || !_workspaceReady) return false;
+    var ok = true;
+    try {
+      ok = await _cloudSyncService.pushAll(
+        ownRollcall: _ownRollcallStats.toMap(),
+        ownLottery: _ownLotteryStats.toMap(),
+      );
+      if (_studentsDirty) {
+        ok = await _pushStudents() && ok;
+      }
+      if (_clearsDirty) {
+        ok = await _pushClears() && ok;
+      }
+    } catch (e) {
+      logger.w('推送云端失败', error: e);
+      ok = false;
+    }
     _notifyIfActive();
     return ok;
+  }
+
+  /// 先读云端 → 合并 → 写回学生名单；本地独有学生不会被整包覆盖。
+  Future<bool> _pushStudents() async {
+    if (!_studentsDirty) return true;
+    try {
+      final deviceId = await _cloudSyncService.resolveDeviceId();
+      final result = await _cloudSyncService.syncStudents(
+        local: _allStudents,
+        localTombstones: _studentTombstones,
+        deviceId: deviceId,
+        clock: _studentClock,
+      );
+      if (_isDisposed) return false;
+
+      _studentClock = result.studentClock;
+      _studentTombstones = Map<String, StudentTombstone>.from(
+        result.tombstones,
+      );
+      _allStudents = result.students;
+      if (result.changed) {
+        await _dataService.saveStudents(_allStudents);
+        await _applyPulledStudents();
+      }
+      _studentsDirty = false;
+      await _persistStudentSyncState();
+      return true;
+    } catch (e) {
+      logger.w('学生名单同步失败，保留待推送标记', error: e);
+      return false;
+    }
+  }
+
+  Future<bool> _pushClears() async {
+    if (!_clearsDirty) return true;
+    try {
+      final merged = await _cloudSyncService.syncClears(_localClearState());
+      if (_isDisposed) return false;
+      _setLocalClears(merged);
+      _clearsDirty = false;
+      await _persistClearSyncState();
+      return true;
+    } catch (e) {
+      logger.w('清空文档同步失败，保留待推送标记', error: e);
+      return false;
+    }
   }
 
   /// 拉取并合并：历史按 uid 去重、统计贡献求和、名单云端优先
   ///
   /// 未登录时静默跳过（不写 lastError）；覆盖进行中跳过，避免与覆盖写盘交错。
   Future<bool> pullFromCloud() async {
-    if (!_isLoggedIn || _overwriteInProgress) return false;
+    if (!_isLoggedIn || _overwriteInProgress || !_workspaceReady) return false;
     final future = _cloudSyncService.pullAll(
       existingUids: (kind) async {
         if (kind == 'rollcall') {
           final records = await _dataService.loadHistory();
-          return records
-              .map((r) => r.uid ?? deriveLegacyHistoryUid(r))
-              .toSet();
+          return records.map((r) => r.uid ?? deriveLegacyHistoryUid(r)).toSet();
         }
         final records = await _dataService.loadLotteryRecords();
-        return records
-            .map((r) => r.uid ?? deriveLegacyLotteryUid(r))
-            .toSet();
+        return records.map((r) => r.uid ?? deriveLegacyLotteryUid(r)).toSet();
       },
       onNewRecord: (kind, json) async {
         if (kind == 'rollcall') {
@@ -1618,22 +2086,148 @@ class AppProvider with ChangeNotifier {
     }
 
     _lastPullNewRecords = result.newRecords;
-    _rollcallStats =
-        _mergeStats(_ownRollcallStats, result.rollcallContributions.values);
-    _lotteryStats =
-        _mergeStats(_ownLotteryStats, result.lotteryContributions.values);
+    _rollcallStats = _mergeStats(
+      _ownRollcallStats,
+      result.rollcallContributions.values,
+    );
+    _lotteryStats = _mergeStats(
+      _ownLotteryStats,
+      result.lotteryContributions.values,
+    );
     _history.sort((a, b) => b.id.compareTo(a.id));
 
-    if (result.students.isNotEmpty) {
-      _allStudents = result.students;
-      await _dataService.saveStudents(_allStudents);
-      await _applyPulledStudents();
+    if (result.students.isNotEmpty || result.studentTombstones.isNotEmpty) {
+      await _mergePulledStudents(result);
     }
+    await _applyCloudClears(result.clearState);
     _notifyIfActive();
     return true;
   }
 
-  DrawStats _mergeStats(DrawStats own, Iterable<Map<String, int>> contributions) {
+  List<HistoryRecord> _filterHistoryByClears(
+    List<HistoryRecord> records,
+    CloudClearState clears,
+  ) => records.where((record) {
+    final at = clears.rollcallClearedAt(record.className);
+    if (at == null) return true;
+    final time = DateTime.tryParse(record.drawTime);
+    return time == null || !time.isBefore(at);
+  }).toList();
+
+  List<LotteryRecord> _filterLotteryByClears(
+    List<LotteryRecord> records,
+    CloudClearState clears,
+  ) => records.where((record) {
+    final at = clears.lotteryClearedAt(record.poolName);
+    return at == null || !record.drawTime.isBefore(at);
+  }).toList();
+
+  int _maxStudentClock(
+    int current,
+    List<Student> students,
+    Map<String, StudentTombstone> tombstones,
+  ) {
+    var clock = current;
+    for (final student in students) {
+      if (student.rev > clock) clock = student.rev;
+    }
+    for (final tombstone in tombstones.values) {
+      if (tombstone.rev > clock) clock = tombstone.rev;
+    }
+    return clock;
+  }
+
+  /// 把云端学生/墓碑与本地合并；本地独有学生保留并等待下一次推送。
+  Future<void> _mergePulledStudents(PullResult result) async {
+    final deviceId = await _cloudSyncService.resolveDeviceId();
+    final merge = mergeStudents(
+      local: _allStudents,
+      localTombstones: _studentTombstones,
+      cloud: result.students,
+      cloudTombstones: result.studentTombstones,
+      deviceId: deviceId,
+      studentClock: _studentClock,
+    );
+
+    _studentClock = merge.studentClock;
+    _studentTombstones = Map<String, StudentTombstone>.from(merge.tombstones);
+    _allStudents = merge.students;
+    if (merge.changed) {
+      await _dataService.saveStudents(_allStudents);
+      await _applyPulledStudents();
+    }
+
+    if (merge.needsPush) {
+      _studentsDirty = true;
+      _markCloudDirty();
+    } else {
+      _studentsDirty = false;
+    }
+    await _persistStudentSyncState();
+  }
+
+  /// 删除 outbox 中已被清空文档覆盖的记录。
+  Future<void> _pruneOutboxByClears(CloudClearState clears) async {
+    await _cloudSyncService.removeFromOutboxWhere('rollcall', (record) {
+      final className = record['class_name']?.toString() ?? '1';
+      final at = clears.rollcallClearedAt(className);
+      if (at == null) return false;
+      final time = DateTime.tryParse(record['draw_time']?.toString() ?? '');
+      return time == null || time.isBefore(at);
+    });
+    await _cloudSyncService.removeFromOutboxWhere('lottery', (record) {
+      final poolName = record['poolName']?.toString() ?? '';
+      final at = clears.lotteryClearedAt(poolName);
+      if (at == null) return false;
+      final time = DateTime.tryParse(record['drawTime']?.toString() ?? '');
+      return time == null || time.isBefore(at);
+    });
+  }
+
+  /// 应用云端清空文档：删除本地早于清空时间的记录，并清理同范围 outbox。
+  Future<void> _applyCloudClears(CloudClearState cloud) async {
+    final local = _localClearState();
+    if (cloud.isEmpty && local.isEmpty) return;
+
+    final merged = mergeClearStates(local, cloud);
+    final needsPush = !merged.semanticallyEquals(cloud);
+    _setLocalClears(merged);
+    _clearsDirty = needsPush;
+    final state = await _cloudSyncService.loadState();
+    state.clearsDirty = needsPush;
+    merged.applyTo(state);
+    await _cloudSyncService.saveState();
+
+    final keptHistory = _history.where((record) {
+      final at = merged.rollcallClearedAt(record.className);
+      if (at == null) return true;
+      final time = DateTime.tryParse(record.drawTime);
+      return time == null || !time.isBefore(at);
+    }).toList();
+    if (keptHistory.length != _history.length) {
+      _history = keptHistory;
+      await _dataService.saveHistory(_history);
+    }
+
+    final lottery = await _dataService.loadLotteryRecords();
+    final keptLottery = lottery.where((record) {
+      final at = merged.lotteryClearedAt(record.poolName);
+      return at == null || !record.drawTime.isBefore(at);
+    }).toList();
+    if (keptLottery.length != lottery.length) {
+      await _dataService.saveLotteryRecords(keptLottery);
+    }
+
+    await _pruneOutboxByClears(merged);
+    if (needsPush) {
+      _markCloudDirty();
+    }
+  }
+
+  DrawStats _mergeStats(
+    DrawStats own,
+    Iterable<Map<String, int>> contributions,
+  ) {
     final merged = DrawStats(own.toMap());
     for (final map in contributions) {
       merged.mergeSum(DrawStats(map));
@@ -1643,9 +2237,17 @@ class AppProvider with ChangeNotifier {
 
   /// 立即同步：先拉后推
   Future<bool> syncNow() async {
-    if (!_isLoggedIn || !_cloudSyncEnabled || _overwriteInProgress) return false;
+    if (!_isLoggedIn || !_cloudSyncEnabled || _overwriteInProgress) {
+      return false;
+    }
+    if (!_workspaceReady) {
+      final initialized = await _retryWorkspaceInitialization();
+      if (!initialized) return false;
+    }
     final pulled = await pullFromCloud();
-    if (!_canSync) return pulled;
+    if (!_canSync) {
+      return pulled;
+    }
     final pushed = await pushToCloud();
     _lastForegroundSyncAt = DateTime.now();
     return pulled || pushed;
@@ -1670,8 +2272,9 @@ class AppProvider with ChangeNotifier {
       'device_id': _deviceId,
       'created_at': DateTime.now().toIso8601String(),
       'students': _allStudents.map((s) => s.toJson()).toList(),
-      'history':
-          (await _dataService.loadHistory()).map((r) => r.toJson()).toList(),
+      'history': (await _dataService.loadHistory())
+          .map((r) => r.toJson())
+          .toList(),
       'lottery': (await _dataService.loadLotteryRecords())
           .map((r) => r.toJson())
           .toList(),
@@ -1725,9 +2328,9 @@ class AppProvider with ChangeNotifier {
       }
     }
 
-    final students = _jsonMaps(snapshot['students'])
-        .map((e) => Student.fromJson(e))
-        .toList();
+    final students = _jsonMaps(
+      snapshot['students'],
+    ).map((e) => Student.fromJson(e)).toList();
     if (students.isNotEmpty) {
       _allStudents = students;
       await _dataService.saveStudents(_allStudents);
@@ -1789,7 +2392,3 @@ class HistoryRefreshResult {
   /// 失败提示：云端拉取失败、已回退本地刷新时非空
   final String? errorMessage;
 }
-
-
-
-

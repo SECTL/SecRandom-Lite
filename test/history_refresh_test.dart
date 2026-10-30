@@ -3,6 +3,8 @@ import 'package:secrandom_lite/models/history_record.dart';
 import 'package:secrandom_lite/models/student.dart';
 import 'package:secrandom_lite/providers/app_provider.dart';
 import 'package:secrandom_lite/services/cloud/cloud_sync_service.dart';
+import 'package:secrandom_lite/services/cloud/student_sync.dart';
+import 'package:secrandom_lite/services/cloud/sync_state.dart';
 import 'package:secrandom_lite/services/data_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'helpers/isolated_data_dir.dart';
@@ -17,7 +19,7 @@ class _FakeCloudSyncService extends CloudSyncService {
   Future<PullResult?> pullAll({
     required Future<Set<String>> Function(String kind) existingUids,
     required Future<void> Function(String kind, Map<String, dynamic> json)
-        onNewRecord,
+    onNewRecord,
   }) async {
     pullCalls++;
     if (!pullSucceeds) return null;
@@ -34,20 +36,36 @@ class _FakeCloudSyncService extends CloudSyncService {
     required Map<String, int> ownRollcall,
     required Map<String, int> ownLottery,
     List<Student>? students,
-  }) async =>
-      true;
+  }) async => true;
+
+  @override
+  Future<StudentMergeResult> syncStudents({
+    required List<Student> local,
+    required Map<String, StudentTombstone> localTombstones,
+    required String deviceId,
+    required int clock,
+  }) async => StudentMergeResult(
+    students: local,
+    tombstones: localTombstones,
+    studentClock: clock,
+    changed: false,
+    needsPush: false,
+  );
+
+  @override
+  Future<CloudClearState> syncClears(CloudClearState local) async => local;
 }
 
 HistoryRecord _record(int id) => HistoryRecord(
-      id: id,
-      name: '刷新测试$id',
-      drawMethod: 1,
-      drawTime: '2026-01-01 10:00:00',
-      drawPeopleNumbers: 1,
-      drawGroup: '1',
-      drawGender: '所有性别',
-      className: '1',
-    );
+  id: id,
+  name: '刷新测试$id',
+  drawMethod: 1,
+  drawTime: '2026-01-01 10:00:00',
+  drawPeopleNumbers: 1,
+  drawGroup: '1',
+  drawGender: '所有性别',
+  className: '1',
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -63,7 +81,9 @@ void main() {
     final provider = AppProvider(cloudSyncService: service);
     addTearDown(provider.dispose);
     await provider.reloadData();
-    await Future<void>.delayed(const Duration(milliseconds: 100)); // 等构造时的初始加载收尾
+    await Future<void>.delayed(
+      const Duration(milliseconds: 100),
+    ); // 等构造时的初始加载收尾
     await provider.refreshHistory();
 
     // 构造 provider 之后才写入磁盘的记录，只有"重载本地"才能看到
@@ -93,7 +113,7 @@ void main() {
     addTearDown(provider.dispose);
     await provider.reloadData();
 
-    provider.setAuthState(true);
+    await provider.setAuthState(true);
     await Future<void>.delayed(const Duration(milliseconds: 200)); // 等登录初始同步
     service.pullCalls = 0;
 
@@ -111,7 +131,7 @@ void main() {
     addTearDown(provider.dispose);
     await provider.reloadData();
 
-    provider.setAuthState(true);
+    await provider.setAuthState(true);
     await Future<void>.delayed(const Duration(milliseconds: 200));
     service.pullCalls = 0;
 
@@ -136,7 +156,7 @@ void main() {
     addTearDown(provider.dispose);
     await provider.reloadData();
 
-    provider.setAuthState(true);
+    await provider.setAuthState(true);
     await Future<void>.delayed(const Duration(milliseconds: 200));
     provider.setCloudSyncEnabled(false);
     service.pullCalls = 0;

@@ -8,6 +8,9 @@ import 'package:secrandom_lite/services/cloud/sync_state.dart';
 class FakeCloudApi extends SectlCloudApi {
   final Map<String, dynamic> store = {};
 
+  /// 为 true 时下一次 meta 写入抛错，模拟「分片写成功、meta 写失败」。
+  bool failNextMetaWrite = false;
+
   T _deepCopy<T>(T value) => jsonDecode(jsonEncode(value)) as T;
 
   @override
@@ -19,7 +22,18 @@ class FakeCloudApi extends SectlCloudApi {
   }
 
   @override
-  Future<CloudKvEntry> putKv({required String key, required dynamic value, int? ttl}) async {
+  Future<CloudKvEntry> putKv({
+    required String key,
+    required dynamic value,
+    int? ttl,
+  }) async {
+    if (failNextMetaWrite && key.endsWith('.meta')) {
+      failNextMetaWrite = false;
+      throw const CloudApiException(
+        statusCode: 500,
+        error: 'meta_write_failed',
+      );
+    }
     store[key] = _deepCopy(value);
     return CloudKvEntry(key: key, value: store[key], size: 0, isJson: true);
   }
@@ -106,5 +120,81 @@ void main() {
     expect(meta.total, 2);
     final (records, _) = await mgr.readFrom('dev-a', const SyncCursor());
     expect(records.map((e) => e['uid']), ['dev-a:0', 'dev-a:1']);
+  });
+
+  test('中间分片缺失时抛错且不推进游标，恢复后可完整读取', () async {
+    await mgr.appendOwn([for (var i = 0; i < 205; i++) rec(i)]);
+    final meta = await mgr.loadMeta('dev-a');
+    expect(meta.shards, 3);
+    final shardKey = mgr.shardKey('dev-a', 1);
+    final saved = api.store.remove(shardKey);
+    expect(saved, isNotNull);
+
+    await expectLater(
+      mgr.readFrom('dev-a', const SyncCursor()),
+      throwsA(isA<IncompleteStreamException>()),
+    );
+
+    api.store[shardKey] = saved;
+    final (records, cursor) = await mgr.readFrom('dev-a', const SyncCursor());
+    expect(records, hasLength(205));
+    expect(cursor.shard, 2);
+    expect(cursor.count, 5);
+  });
+
+  test('旧 meta 没有 shard_counts 时仍能完整读取', () async {
+    await mgr.appendOwn([for (var i = 0; i < 105; i++) rec(i)]);
+    final metaKey = mgr.metaKey('dev-a');
+    final stored = Map<String, dynamic>.from(api.store[metaKey] as Map);
+    stored.remove('shard_counts');
+    api.store[metaKey] = stored;
+
+    final (records, cursor) = await mgr.readFrom('dev-a', const SyncCursor());
+    expect(records, hasLength(105));
+    expect(cursor.shard, 1);
+    expect(cursor.count, 5);
+  });
+
+  test('分片写成功、meta 写失败后重试会重建 meta 且不丢记录', () async {
+    await mgr.appendOwn([rec(0)]);
+    expect((await mgr.loadMeta('dev-a')).total, 1);
+
+    api.failNextMetaWrite = true;
+    await expectLater(
+      mgr.appendOwn([for (var i = 1; i < 105; i++) rec(i)]),
+      throwsA(isA<CloudApiException>()),
+    );
+
+    // 重试同一批记录：分片里已有，不能重复写入；meta 需要自愈。
+    final meta = await mgr.appendOwn([for (var i = 1; i < 105; i++) rec(i)]);
+    expect(meta.shards, 2);
+    expect(meta.total, 105);
+    expect(meta.shardCounts, [100, 5]);
+
+    final (records, _) = await mgr.readFrom('dev-a', const SyncCursor());
+    expect(records, hasLength(105));
+    expect(records.map((e) => e['uid']).toSet(), hasLength(105));
+  });
+
+  test('尾片在 meta 快照后增长时只消费到快照计数', () async {
+    await mgr.appendOwn([rec(0), rec(1)]);
+    final metaKey = mgr.metaKey('dev-a');
+    final current = Map<String, dynamic>.from(api.store[metaKey] as Map);
+    api.store[metaKey] = {
+      ...current,
+      'total': 1,
+      'last_shard_count': 1,
+      'shard_counts': [1],
+    };
+
+    final (first, cursor) = await mgr.readFrom('dev-a', const SyncCursor());
+    expect(first.map((e) => e['uid']), ['dev-a:0']);
+    expect(cursor.count, 1);
+
+    // meta 追上来后，从旧游标继续读快照之后新增的记录。
+    api.store[metaKey] = current;
+    final (rest, next) = await mgr.readFrom('dev-a', cursor);
+    expect(rest.map((e) => e['uid']), ['dev-a:1']);
+    expect(next.count, 2);
   });
 }

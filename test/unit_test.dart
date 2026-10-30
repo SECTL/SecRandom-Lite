@@ -12,17 +12,29 @@ void main() {
 
   group('Student Model Tests', () {
     test('Student should be created correctly', () {
-      final student = Student(id: 1, name: 'John', gender: 'Male', group: 'Class A', exist: true);
+      final student = Student(
+        id: 1,
+        name: 'John',
+        gender: 'Male',
+        group: 'Class A',
+        exist: true,
+      );
       expect(student.id, 1);
       expect(student.name, 'John');
     });
 
     test('Student serialization', () {
-      final student = Student(id: 1, name: 'John', gender: 'Male', group: 'Class A', exist: true);
+      final student = Student(
+        id: 1,
+        name: 'John',
+        gender: 'Male',
+        group: 'Class A',
+        exist: true,
+      );
       final json = student.toJson();
       expect(json['id'], 1);
       expect(json['name'], 'John');
-      
+
       final student2 = Student.fromJson(json);
       expect(student2.id, student.id);
       expect(student2.name, student.name);
@@ -31,7 +43,10 @@ void main() {
 
   group('RandomService Tests', () {
     final randomService = RandomService();
-    final students = List.generate(10, (i) => Student(id: i, name: 'S$i', gender: 'M', group: 'C1', exist: true));
+    final students = List.generate(
+      10,
+      (i) => Student(id: i, name: 'S$i', gender: 'M', group: 'C1', exist: true),
+    );
 
     test('pickRandomStudents should return requested count', () {
       final picked = randomService.pickRandomStudents(students, 3);
@@ -57,20 +72,25 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    test('loadStudents returns initial data when empty', () async {
+    test('loadStudents returns empty when empty', () async {
       await Future.delayed(const Duration(milliseconds: 100));
       final service = DataService();
       final students = await service.loadStudents();
-      expect(students.isNotEmpty, true);
-      expect(students.length, 40); // Default count
+      expect(students, isEmpty);
     });
 
     test('save and load students', () async {
       await Future.delayed(const Duration(milliseconds: 100));
       final service = DataService();
-      final newStudent = Student(id: 99, name: 'New Guy', gender: 'M', group: 'C1', exist: true);
+      final newStudent = Student(
+        id: 99,
+        name: 'New Guy',
+        gender: 'M',
+        group: 'C1',
+        exist: true,
+      );
       await service.saveStudents([newStudent]);
-      
+
       final loaded = await service.loadStudents();
       expect(loaded.length, 1);
       expect(loaded.first.name, 'New Guy');
@@ -90,7 +110,7 @@ void main() {
         className: '1',
       );
       await service.saveHistory([record]);
-      
+
       final history = await service.loadHistory();
       expect(history.length, 1);
       expect(history.first.name, 'Record 1');

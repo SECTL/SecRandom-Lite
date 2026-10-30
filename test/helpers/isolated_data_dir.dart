@@ -41,6 +41,10 @@ void isolateDataServiceDir() {
     DataService.debugDataDirOverride = dir!.path;
   });
 
+  setUp(() {
+    DataService.resetWorkspaceToGuest();
+  });
+
   tearDownAll(() {
     // 留到文件末尾才清：期间任何迟到的写入都只会落在这个临时目录里，
     // 而不是回落到 SDK 目录。

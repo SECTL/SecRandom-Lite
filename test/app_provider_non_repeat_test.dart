@@ -1,19 +1,9 @@
-
 import 'package:secrandom_lite/models/app_config.dart';
 import 'package:secrandom_lite/providers/app_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'helpers/isolated_data_dir.dart';
-
-Future<void> _waitForProviderLoaded(AppProvider provider) async {
-  for (int i = 0; i < 120; i++) {
-    if (provider.totalCount > 0) {
-      return;
-    }
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-  }
-  fail('AppProvider did not finish loading in time');
-}
+import 'helpers/test_students.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -21,6 +11,8 @@ void main() {
   isolateDataServiceDir();
 
   setUp(() async {
+    clearTestDataDir();
+    await seedTestStudents();
     SharedPreferences.setMockInitialValues({});
   });
 
@@ -28,7 +20,7 @@ void main() {
     'nonRepeatEnabled=true should decrease remainingCount after draw',
     () async {
       final provider = AppProvider();
-      await _waitForProviderLoaded(provider);
+      await provider.ready;
 
       provider.setFairDrawEnabled(false);
       provider.setNonRepeatEnabled(true);
@@ -51,7 +43,7 @@ void main() {
     'nonRepeatEnabled=false should keep remainingCount equal to totalCount',
     () async {
       final provider = AppProvider();
-      await _waitForProviderLoaded(provider);
+      await provider.ready;
 
       provider.setFairDrawEnabled(false);
       provider.setNonRepeatEnabled(false);
@@ -74,7 +66,7 @@ void main() {
 
   test('toggling nonRepeatEnabled off should reset remaining pool', () async {
     final provider = AppProvider();
-    await _waitForProviderLoaded(provider);
+    await provider.ready;
 
     provider.setFairDrawEnabled(false);
     provider.setNonRepeatEnabled(true);

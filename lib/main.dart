@@ -34,7 +34,10 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _authProvider = context.read<AuthProvider>();
     _appProvider = context.read<AppProvider>();
-    _authListener = () => _appProvider.setAuthState(_authProvider.isLoggedIn);
+    _authListener = () {
+      final user = _authProvider.userInfo;
+      _appProvider.setAuthState(_authProvider.isLoggedIn, userId: user?.userId);
+    };
     _authProvider.addListener(_authListener);
     // 覆盖注册监听前已完成的会话恢复
     _authListener();

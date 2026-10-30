@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +13,10 @@ import 'package:secrandom_lite/services/cloud/sync_state.dart';
 class FakeCloudApi extends SectlCloudApi {
   final Map<String, dynamic> store = {};
 
+  /// 测试用：让下一次历史分片写入暂停，模拟上传进行中。
+  Completer<void>? historyWriteGate;
+  Completer<void>? historyWriteEntered;
+
   T _deepCopy<T>(T value) => jsonDecode(jsonEncode(value)) as T;
 
   @override
@@ -23,7 +28,17 @@ class FakeCloudApi extends SectlCloudApi {
   }
 
   @override
-  Future<CloudKvEntry> putKv({required String key, required dynamic value, int? ttl}) async {
+  Future<CloudKvEntry> putKv({
+    required String key,
+    required dynamic value,
+    int? ttl,
+  }) async {
+    if (historyWriteGate != null && key.startsWith('srlite.history.v2.')) {
+      if (historyWriteEntered != null && !historyWriteEntered!.isCompleted) {
+        historyWriteEntered!.complete();
+      }
+      await historyWriteGate!.future;
+    }
     store[key] = _deepCopy(value);
     return CloudKvEntry(key: key, value: store[key], size: 0, isJson: true);
   }
@@ -69,18 +84,40 @@ class MemorySyncLocalStore implements SyncLocalStore {
   Future<void> saveOutbox(SyncOutbox o) async => outbox = o;
 }
 
-HistoryRecord rollcall(String uid, {String name = '张三', String time = '2026-01-01 08:00:00'}) =>
-    HistoryRecord(
-      id: 1,
-      uid: uid,
-      name: name,
-      drawMethod: 1,
-      drawTime: time,
-      drawPeopleNumbers: 1,
-      drawGroup: '所有小组',
-      drawGender: '所有性别',
-      className: '1',
-    );
+HistoryRecord rollcall(
+  String uid, {
+  String name = '张三',
+  String time = '2026-01-01 08:00:00',
+}) => HistoryRecord(
+  id: 1,
+  uid: uid,
+  name: name,
+  drawMethod: 1,
+  drawTime: time,
+  drawPeopleNumbers: 1,
+  drawGroup: '所有小组',
+  drawGender: '所有性别',
+  className: '1',
+);
+
+Student student(
+  String uid, {
+  String name = '张三',
+  int id = 1,
+  int rev = 1,
+  String revBy = 'dev-a',
+  String className = '1',
+}) => Student(
+  id: id,
+  uid: uid,
+  name: name,
+  gender: '男',
+  group: '1',
+  className: className,
+  exist: true,
+  rev: rev,
+  revBy: revBy,
+);
 
 void main() {
   test('离线 outbox 冲洗到自己的流，并写注册表与统计', () async {
@@ -89,10 +126,7 @@ void main() {
     final service = CloudSyncService(api: api, store: store, deviceId: 'dev-a');
 
     await service.enqueueRecord('rollcall', rollcall('dev-a:1').toJson());
-    final ok = await service.pushAll(
-      ownRollcall: {'张三': 1},
-      ownLottery: {},
-    );
+    final ok = await service.pushAll(ownRollcall: {'张三': 1}, ownLottery: {});
 
     expect(ok, isTrue);
     expect(store.outbox.isEmpty, isTrue);
@@ -102,10 +136,7 @@ void main() {
       isTrue,
     );
     expect(api.store.containsKey('srlite.sync.v2.registry'), isTrue);
-    expect(
-      api.store['srlite.stats.v2.rollcall.dev-a'],
-      {'张三': 1},
-    );
+    expect(api.store['srlite.stats.v2.rollcall.dev-a'], {'张三': 1});
     expect(api.store.keys, everyElement(startsWith('srlite.')));
   });
 
@@ -282,8 +313,10 @@ void main() {
     final api = FakeCloudApi();
     final storeB = MemorySyncLocalStore();
     final b = CloudSyncService(api: api, store: storeB, deviceId: 'dev-b');
-    await b.enqueueRecord('rollcall',
-        rollcall('dev-b:1', time: '2026-01-01 08:00:00').toJson());
+    await b.enqueueRecord(
+      'rollcall',
+      rollcall('dev-b:1', time: '2026-01-01 08:00:00').toJson(),
+    );
     await b.pushAll(ownRollcall: {}, ownLottery: {});
 
     final storeA = MemorySyncLocalStore();
@@ -313,5 +346,168 @@ void main() {
     }
     expect(total, 5);
     expect(contributions['dev-b']!['李四'], 1);
+  });
+
+  test('上传暂停期间新入队的记录不会被 flush 的旧快照覆盖', () async {
+    final api = FakeCloudApi();
+    final store = MemorySyncLocalStore();
+    final service = CloudSyncService(api: api, store: store, deviceId: 'dev-a');
+
+    await service.enqueueRecord('rollcall', rollcall('dev-a:1').toJson());
+    api.historyWriteGate = Completer<void>();
+    api.historyWriteEntered = Completer<void>();
+    final flush = service.flushOutbox();
+    await api.historyWriteEntered!.future;
+
+    // 上传进行中入队的新记录。
+    await service.enqueueRecord('rollcall', rollcall('dev-a:2').toJson());
+    api.historyWriteGate!.complete();
+    await flush;
+
+    expect(store.outbox.rollcall.map((record) => record['uid']), [
+      'dev-a:2',
+    ], reason: '只应确认本批已上传的记录');
+    final firstShard = (api.store['srlite.history.v2.rollcall.dev-a.0'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(firstShard.map((record) => record['uid']), ['dev-a:1']);
+
+    await service.flushOutbox();
+    expect(store.outbox.isEmpty, isTrue);
+    final finalShard = (api.store['srlite.history.v2.rollcall.dev-a.0'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(finalShard.map((record) => record['uid']), ['dev-a:1', 'dev-a:2']);
+  });
+
+  test('两台设备交错编辑学生名单后双方看到并集', () async {
+    final api = FakeCloudApi();
+    final a = CloudSyncService(
+      api: api,
+      store: MemorySyncLocalStore(),
+      deviceId: 'dev-a',
+    );
+    final b = CloudSyncService(
+      api: api,
+      store: MemorySyncLocalStore(),
+      deviceId: 'dev-b',
+    );
+
+    await a.syncStudents(
+      local: [student('dev-a:s1', name: '甲', revBy: 'dev-a')],
+      localTombstones: const {},
+      deviceId: 'dev-a',
+      clock: 1,
+    );
+    await b.syncStudents(
+      local: [student('dev-b:s1', name: '乙', revBy: 'dev-b')],
+      localTombstones: const {},
+      deviceId: 'dev-b',
+      clock: 1,
+    );
+
+    final merged = await a.syncStudents(
+      local: [student('dev-a:s1', name: '甲', revBy: 'dev-a')],
+      localTombstones: const {},
+      deviceId: 'dev-a',
+      clock: 1,
+    );
+    expect(merged.needsPush, isFalse);
+    expect(merged.students.map((s) => s.uid).toSet(), {'dev-a:s1', 'dev-b:s1'});
+
+    final cloud = await a.fetchStudents();
+    expect(cloud.students, hasLength(2));
+  });
+
+  test('墓碑抑制另一端重新上传的已删除学生', () async {
+    final api = FakeCloudApi();
+    final a = CloudSyncService(
+      api: api,
+      store: MemorySyncLocalStore(),
+      deviceId: 'dev-a',
+    );
+    final b = CloudSyncService(
+      api: api,
+      store: MemorySyncLocalStore(),
+      deviceId: 'dev-b',
+    );
+
+    await a.syncStudents(
+      local: [student('dev-a:s1', name: '甲', rev: 1, revBy: 'dev-a')],
+      localTombstones: const {},
+      deviceId: 'dev-a',
+      clock: 1,
+    );
+
+    // A 删除学生：写墓碑，本地不再有存活学生。
+    await a.syncStudents(
+      local: const [],
+      localTombstones: {
+        'dev-a:s1': StudentTombstone(
+          rev: 2,
+          by: 'dev-a',
+          at: DateTime(2026, 10, 30),
+        ),
+      },
+      deviceId: 'dev-a',
+      clock: 2,
+    );
+
+    // B 仍持有旧学生记录，合并后应被墓碑删除。
+    final result = await b.syncStudents(
+      local: [student('dev-a:s1', name: '甲', rev: 1, revBy: 'dev-a')],
+      localTombstones: const {},
+      deviceId: 'dev-b',
+      clock: 1,
+    );
+    expect(result.students, isEmpty);
+    expect(result.tombstones['dev-a:s1']!.rev, 2);
+    expect(result.changed, isTrue);
+
+    final cloud = await b.fetchStudents();
+    expect(cloud.students, isEmpty);
+    expect(cloud.tombstones['dev-a:s1']!.rev, 2);
+  });
+
+  test('清空文档按范围取较晚时间合并', () async {
+    final api = FakeCloudApi();
+    final storeA = MemorySyncLocalStore();
+    final storeB = MemorySyncLocalStore();
+    final a = CloudSyncService(api: api, store: storeA, deviceId: 'dev-a');
+    final b = CloudSyncService(api: api, store: storeB, deviceId: 'dev-b');
+
+    await a.syncClears(
+      CloudClearState(
+        rollcallAll: DateTime(2026, 1, 1),
+        rollcallClasses: {'1': DateTime(2026, 1, 2)},
+      ),
+    );
+    await b.syncClears(
+      CloudClearState(
+        rollcallAll: DateTime(2026, 2, 1),
+        lotteryAll: DateTime(2026, 3, 1),
+        lotteryPools: {'期末奖池': DateTime(2026, 4, 1)},
+      ),
+    );
+
+    final merged = await a.fetchClearState();
+    expect(merged.rollcallAll, DateTime(2026, 2, 1));
+    expect(merged.rollcallClasses['1'], DateTime(2026, 1, 2));
+    expect(merged.lotteryAll, DateTime(2026, 3, 1));
+    expect(merged.lotteryPools['期末奖池'], DateTime(2026, 4, 1));
+  });
+
+  test('resetWorkspaceState 丢弃缓存状态并重新从存储读取', () async {
+    final store = MemorySyncLocalStore();
+    final service = CloudSyncService(
+      api: FakeCloudApi(),
+      store: store,
+      deviceId: 'dev-a',
+    );
+
+    expect((await service.loadState()).studentClock, 0);
+    store.state = LocalSyncState(studentClock: 9);
+    expect((await service.loadState()).studentClock, 0);
+
+    service.resetWorkspaceState();
+    expect((await service.loadState()).studentClock, 9);
   });
 }

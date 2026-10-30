@@ -10,16 +10,15 @@ import '../../widgets/history/filter_row.dart';
 class RollcallHistoryDetailScreen extends StatefulWidget {
   final String initialClass;
 
-  const RollcallHistoryDetailScreen({
-    super.key,
-    required this.initialClass,
-  });
+  const RollcallHistoryDetailScreen({super.key, required this.initialClass});
 
   @override
-  State<RollcallHistoryDetailScreen> createState() => _RollcallHistoryDetailScreenState();
+  State<RollcallHistoryDetailScreen> createState() =>
+      _RollcallHistoryDetailScreenState();
 }
 
-class _RollcallHistoryDetailScreenState extends State<RollcallHistoryDetailScreen> {
+class _RollcallHistoryDetailScreenState
+    extends State<RollcallHistoryDetailScreen> {
   late HistoryFilter _filter;
   final int _batchSize = 30;
   int _currentRow = 0;
@@ -87,8 +86,14 @@ class _RollcallHistoryDetailScreenState extends State<RollcallHistoryDetailScree
         title: const Text('从云端加载历史'),
         content: const Text('将从云端拉取历史记录并合并到本地。\n重复记录会自动去重。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('加载')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('加载'),
+          ),
         ],
       ),
     );
@@ -103,51 +108,55 @@ class _RollcallHistoryDetailScreenState extends State<RollcallHistoryDetailScree
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('从云端加载历史失败')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('从云端加载历史失败')));
     }
   }
 
   Future<void> _clearCurrentHistory(AppProvider appProvider) async {
     final confirmed = await _showClearConfirmDialog(
       title: '确认清空',
-      content: '确定要清空班级 "${_filter.selectedClass}" 的点名历史吗？',
+      content:
+          '确定要清空班级 "${_filter.selectedClass}" 的点名历史吗？\n\n'
+          '其他登录同一账号的设备也会同步清空。',
     );
     if (confirmed != true || !mounted) return;
     try {
       await appProvider.clearHistory(className: _filter.selectedClass);
       if (!mounted) return;
       _resetPagination();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已清空当前班级点名历史')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已清空当前班级点名历史')));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('清空点名历史失败')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('清空点名历史失败')));
     }
   }
 
   Future<void> _clearAllHistory(AppProvider appProvider) async {
     final confirmed = await _showClearConfirmDialog(
       title: '确认清空',
-      content: '确定要清空全部点名历史吗？此操作无法撤销。',
+      content:
+          '确定要清空全部点名历史吗？此操作无法撤销。\n\n'
+          '其他登录同一账号的设备也会同步清空。',
     );
     if (confirmed != true || !mounted) return;
     try {
       await appProvider.clearHistory();
       if (!mounted) return;
       _resetPagination();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已清空全部点名历史')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已清空全部点名历史')));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('清空点名历史失败')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('清空点名历史失败')));
     }
   }
 
@@ -254,7 +263,10 @@ class _RollcallHistoryDetailScreenState extends State<RollcallHistoryDetailScree
     );
   }
 
-  Widget _buildFilters(List<String> classOptions, List<Student> filteredStudents) {
+  Widget _buildFilters(
+    List<String> classOptions,
+    List<Student> filteredStudents,
+  ) {
     return Card(
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -274,10 +286,9 @@ class _RollcallHistoryDetailScreenState extends State<RollcallHistoryDetailScree
               items: classOptions,
               onChanged: (value) {
                 if (value != null) {
-                  _updateFilter(_filter.copyWith(
-                    selectedClass: value,
-                    clearStudent: true,
-                  ));
+                  _updateFilter(
+                    _filter.copyWith(selectedClass: value, clearStudent: true),
+                  );
                 }
               },
             ),
@@ -292,11 +303,13 @@ class _RollcallHistoryDetailScreenState extends State<RollcallHistoryDetailScree
               items: const ['全部记录', '个人记录'],
               onChanged: (value) {
                 if (value != null) {
-                  _updateFilter(_filter.copyWith(
-                    viewMode: value,
-                    clearStudent: true,
-                    clearSort: true,
-                  ));
+                  _updateFilter(
+                    _filter.copyWith(
+                      viewMode: value,
+                      clearStudent: true,
+                      clearSort: true,
+                    ),
+                  );
                 }
               },
             ),
@@ -344,10 +357,7 @@ class _RollcallHistoryDetailScreenState extends State<RollcallHistoryDetailScree
           style: Theme.of(context).textTheme.bodyMedium,
           dropdownColor: Theme.of(context).cardColor,
           items: items.map((String value) {
-            return DropdownMenuItem<String>(
-              value: value,
-              child: Text(value),
-            );
+            return DropdownMenuItem<String>(value: value, child: Text(value));
           }).toList(),
           onChanged: onChanged,
         ),
@@ -391,12 +401,20 @@ class _RollcallHistoryDetailScreenState extends State<RollcallHistoryDetailScree
                 final maxWidth = constraints.maxWidth;
                 final isCompact = maxWidth < 600;
                 final isVeryCompact = maxWidth < 430;
-                final columnSpacing = isVeryCompact ? 8.0 : (isCompact ? 12.0 : 24.0);
-                final horizontalMargin = isVeryCompact ? 8.0 : (isCompact ? 12.0 : 24.0);
-                final tableFontSize = isVeryCompact ? 11.0 : (isCompact ? 12.0 : null);
+                final columnSpacing = isVeryCompact
+                    ? 8.0
+                    : (isCompact ? 12.0 : 24.0);
+                final horizontalMargin = isVeryCompact
+                    ? 8.0
+                    : (isCompact ? 12.0 : 24.0);
+                final tableFontSize = isVeryCompact
+                    ? 11.0
+                    : (isCompact ? 12.0 : null);
 
                 final baseStyle = Theme.of(context).textTheme.bodyMedium;
-                final tableTextStyle = baseStyle?.copyWith(fontSize: tableFontSize);
+                final tableTextStyle = baseStyle?.copyWith(
+                  fontSize: tableFontSize,
+                );
 
                 return DataTable(
                   headingRowColor: WidgetStateProperty.resolveWith((states) {
@@ -415,10 +433,12 @@ class _RollcallHistoryDetailScreenState extends State<RollcallHistoryDetailScree
                       label: Text(entry.value, style: tableTextStyle),
                       onSort: _canSort(entry.key)
                           ? (columnIndex, ascending) {
-                              _updateFilter(_filter.copyWith(
-                                sortColumn: columnIndex,
-                                sortAscending: ascending,
-                              ));
+                              _updateFilter(
+                                _filter.copyWith(
+                                  sortColumn: columnIndex,
+                                  sortAscending: ascending,
+                                ),
+                              );
                             }
                           : null,
                     );
@@ -426,9 +446,9 @@ class _RollcallHistoryDetailScreenState extends State<RollcallHistoryDetailScree
                   rows: displayData.map((row) {
                     return DataRow(
                       cells: row.map((cell) {
-                        return DataCell(Center(
-                          child: Text(cell, style: tableTextStyle),
-                        ));
+                        return DataCell(
+                          Center(child: Text(cell, style: tableTextStyle)),
+                        );
                       }).toList(),
                     );
                   }).toList(),
@@ -483,10 +503,11 @@ class _RollcallHistoryDetailScreenState extends State<RollcallHistoryDetailScree
     switch (_filter.viewMode) {
       case '个人记录':
         if (_filter.selectedStudent == null) return [];
-        final studentHistory = history
-            .where((h) => h.name.contains(_filter.selectedStudent!))
-            .toList()
-          ..sort((a, b) => b.drawTime.compareTo(a.drawTime));
+        final studentHistory =
+            history
+                .where((h) => h.name.contains(_filter.selectedStudent!))
+                .toList()
+              ..sort((a, b) => b.drawTime.compareTo(a.drawTime));
         return studentHistory.map((record) {
           return [
             record.drawTime,
