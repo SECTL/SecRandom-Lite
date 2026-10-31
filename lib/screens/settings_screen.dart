@@ -9,7 +9,6 @@ import 'settings/account_settings_screen.dart';
 import 'settings/cloud_sync_settings_screen.dart';
 import 'settings/data_management_screen.dart';
 import 'settings/general_settings_screen.dart';
-import 'settings/lottery_settings_screen.dart';
 import 'settings/personalization_settings_screen.dart';
 import 'settings/rollcall_settings_screen.dart';
 
@@ -65,14 +64,10 @@ class SettingsScreen extends StatelessWidget {
           final isLoggedIn = authProvider.isLoggedIn;
           final name =
               isLoggedIn && authProvider.userInfo?.name.isNotEmpty == true
-                  ? authProvider.userInfo!.name
-                  : '账户';
+              ? authProvider.userInfo!.name
+              : '账户';
 
-          return Text(
-            name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          );
+          return Text(name, maxLines: 1, overflow: TextOverflow.ellipsis);
         },
         subtitleBuilder: (context) {
           final authProvider = context.watch<AuthProvider>();
@@ -103,22 +98,6 @@ class SettingsScreen extends StatelessWidget {
                 context,
                 provider,
               ),
-              icon: const Icon(Icons.file_upload, size: 18),
-              label: const Text('快速导入'),
-            ),
-          ];
-        },
-      ),
-      SettingItem(
-        title: '抽奖名单',
-        icon: Icons.card_giftcard,
-        pageBuilder: () => const LotterySettingsBody(),
-        routeName: '/settings/lottery',
-        applyMaxWidth: false,
-        actionsBuilder: (context) {
-          return [
-            TextButton.icon(
-              onPressed: () => LotterySettingsBody.showQuickImport(),
               icon: const Icon(Icons.file_upload, size: 18),
               label: const Text('快速导入'),
             ),

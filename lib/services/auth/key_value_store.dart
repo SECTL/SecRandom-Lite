@@ -9,10 +9,7 @@ abstract class KeyValueStore {
 }
 
 class SecureKeyValueStore implements KeyValueStore {
-  SecureKeyValueStore()
-    : _storage = const FlutterSecureStorage(
-        aOptions: AndroidOptions(encryptedSharedPreferences: true),
-      );
+  SecureKeyValueStore() : _storage = const FlutterSecureStorage();
 
   final FlutterSecureStorage _storage;
 

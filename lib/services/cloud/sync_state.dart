@@ -46,33 +46,18 @@ class StudentTombstone {
 
 /// 云端清空文档（`srlite.clear.v2`）。
 ///
-/// 全局清空与按班级/奖池清空分别记录时间；合并时同一范围取较晚时间。
+/// 全局清空与按班级清空分别记录时间；合并时同一范围取较晚时间。
 class CloudClearState {
-  const CloudClearState({
-    this.rollcallAll,
-    this.lotteryAll,
-    this.rollcallClasses = const {},
-    this.lotteryPools = const {},
-  });
+  const CloudClearState({this.rollcallAll, this.rollcallClasses = const {}});
 
   final DateTime? rollcallAll;
-  final DateTime? lotteryAll;
   final Map<String, DateTime> rollcallClasses;
-  final Map<String, DateTime> lotteryPools;
 
-  bool get isEmpty =>
-      rollcallAll == null &&
-      lotteryAll == null &&
-      rollcallClasses.isEmpty &&
-      lotteryPools.isEmpty;
+  bool get isEmpty => rollcallAll == null && rollcallClasses.isEmpty;
 
   /// 点名某班级实际生效的清空时间（全局与班级取较晚者）。
   DateTime? rollcallClearedAt(String className) =>
       _later(rollcallAll, rollcallClasses[className]);
-
-  /// 抽奖某奖池实际生效的清空时间（全局与奖池取较晚者）。
-  DateTime? lotteryClearedAt(String poolName) =>
-      _later(lotteryAll, lotteryPools[poolName]);
 
   Map<String, dynamic> toJson() => {
     'rollcall': {
@@ -81,54 +66,37 @@ class CloudClearState {
         (name, at) => MapEntry(name, at.toIso8601String()),
       ),
     },
-    'lottery': {
-      if (lotteryAll != null) 'all': lotteryAll!.toIso8601String(),
-      'pools': lotteryPools.map(
-        (pool, at) => MapEntry(pool, at.toIso8601String()),
-      ),
-    },
   };
 
   factory CloudClearState.fromJson(Map<String, dynamic> json) {
     final rollcall = json['rollcall'];
-    final lottery = json['lottery'];
     return CloudClearState(
       rollcallAll: _parseTime(rollcall is Map ? rollcall['all'] : null),
-      lotteryAll: _parseTime(lottery is Map ? lottery['all'] : null),
       rollcallClasses: _parseTimeMap(
         rollcall is Map ? rollcall['classes'] : null,
       ),
-      lotteryPools: _parseTimeMap(lottery is Map ? lottery['pools'] : null),
     );
   }
 
   factory CloudClearState.fromLocalState(LocalSyncState state) =>
       CloudClearState(
         rollcallAll: state.clearedAt['rollcall'],
-        lotteryAll: state.clearedAt['lottery'],
         rollcallClasses: Map<String, DateTime>.from(
           state.clearedClasses['rollcall'] ?? const {},
         ),
-        lotteryPools: Map<String, DateTime>.from(state.clearedPools),
       );
 
   /// 把合并后的清空文档写回本地同步状态。
   void applyTo(LocalSyncState state) {
     _putOrRemove(state.clearedAt, 'rollcall', rollcallAll);
-    _putOrRemove(state.clearedAt, 'lottery', lotteryAll);
     state.clearedClasses['rollcall'] = Map<String, DateTime>.from(
       rollcallClasses,
     );
-    state.clearedPools
-      ..clear()
-      ..addAll(lotteryPools);
   }
 
   bool semanticallyEquals(CloudClearState other) =>
       rollcallAll == other.rollcallAll &&
-      lotteryAll == other.lotteryAll &&
-      _timeMapsEqual(rollcallClasses, other.rollcallClasses) &&
-      _timeMapsEqual(lotteryPools, other.lotteryPools);
+      _timeMapsEqual(rollcallClasses, other.rollcallClasses);
 
   static DateTime? _parseTime(Object? value) {
     if (value == null) return null;
@@ -190,9 +158,7 @@ Map<String, DateTime> _laterMap(
 CloudClearState mergeClearStates(CloudClearState a, CloudClearState b) =>
     CloudClearState(
       rollcallAll: _later(a.rollcallAll, b.rollcallAll),
-      lotteryAll: _later(a.lotteryAll, b.lotteryAll),
       rollcallClasses: _laterMap(a.rollcallClasses, b.rollcallClasses),
-      lotteryPools: _laterMap(a.lotteryPools, b.lotteryPools),
     );
 
 /// 本地同步状态（data/sync_state.json）
@@ -202,7 +168,6 @@ class LocalSyncState {
     Map<String, DateTime>? clearedAt,
     Map<String, Map<String, SyncCursor>>? pulled,
     Map<String, int>? ownRollcallStats,
-    Map<String, int>? ownLotteryStats,
     this.legacyUploaded = false,
     this.baselineInitialized = false,
     this.studentClock = 0,
@@ -211,7 +176,6 @@ class LocalSyncState {
     Map<String, StudentTombstone>? studentTombstones,
     this.clearsDirty = false,
     Map<String, Map<String, DateTime>>? clearedClasses,
-    Map<String, DateTime>? clearedPools,
   }) : ownSeq = Map<String, int>.from(ownSeq ?? {}),
        clearedAt = Map<String, DateTime>.from(clearedAt ?? {}),
        pulled = {
@@ -219,15 +183,13 @@ class LocalSyncState {
            e.key: Map<String, SyncCursor>.from(e.value),
        },
        ownRollcallStats = Map<String, int>.from(ownRollcallStats ?? {}),
-       ownLotteryStats = Map<String, int>.from(ownLotteryStats ?? {}),
        studentTombstones = Map<String, StudentTombstone>.from(
          studentTombstones ?? {},
        ),
        clearedClasses = {
          for (final e in (clearedClasses ?? {}).entries)
            e.key: Map<String, DateTime>.from(e.value),
-       },
-       clearedPools = Map<String, DateTime>.from(clearedPools ?? {});
+       };
 
   /// kind -> 已分配的最大本地序号
   final Map<String, int> ownSeq;
@@ -240,7 +202,6 @@ class LocalSyncState {
 
   /// 本机统计贡献
   final Map<String, int> ownRollcallStats;
-  final Map<String, int> ownLotteryStats;
 
   /// 旧记录是否已一次性补传
   bool legacyUploaded;
@@ -266,9 +227,6 @@ class LocalSyncState {
   /// kind -> className -> 清空时间
   final Map<String, Map<String, DateTime>> clearedClasses;
 
-  /// 抽奖奖池 -> 清空时间
-  final Map<String, DateTime> clearedPools;
-
   Map<String, dynamic> toJson() => {
     'own_seq': ownSeq,
     'cleared_at': clearedAt.map((k, v) => MapEntry(k, v.toIso8601String())),
@@ -277,7 +235,6 @@ class LocalSyncState {
           MapEntry(device, kinds.map((k, c) => MapEntry(k, c.toJson()))),
     ),
     'own_rollcall_stats': ownRollcallStats,
-    'own_lottery_stats': ownLotteryStats,
     'legacy_uploaded': legacyUploaded,
     'baseline_initialized': baselineInitialized,
     'student_clock': studentClock,
@@ -292,9 +249,6 @@ class LocalSyncState {
         kind,
         classes.map((name, at) => MapEntry(name, at.toIso8601String())),
       ),
-    ),
-    'cleared_pools': clearedPools.map(
-      (pool, at) => MapEntry(pool, at.toIso8601String()),
     ),
   };
 
@@ -348,9 +302,6 @@ class LocalSyncState {
       ownRollcallStats: ((json['own_rollcall_stats'] as Map?) ?? {}).map(
         (k, v) => MapEntry(k.toString(), v as int? ?? 0),
       ),
-      ownLotteryStats: ((json['own_lottery_stats'] as Map?) ?? {}).map(
-        (k, v) => MapEntry(k.toString(), v as int? ?? 0),
-      ),
       legacyUploaded: json['legacy_uploaded'] as bool? ?? false,
       baselineInitialized: json['baseline_initialized'] as bool? ?? false,
       studentClock: json['student_clock'] as int? ?? 0,
@@ -359,46 +310,35 @@ class LocalSyncState {
       studentTombstones: tombstones,
       clearsDirty: json['clears_dirty'] as bool? ?? false,
       clearedClasses: clearedClasses,
-      clearedPools: ((json['cleared_pools'] as Map?) ?? {}).map(
-        (k, v) => MapEntry(
-          k.toString(),
-          DateTime.tryParse(v.toString()) ??
-              DateTime.fromMillisecondsSinceEpoch(0),
-        ),
-      ),
     );
   }
 }
 
 /// 待上传队列（data/sync_outbox.json），存 toJson 后的原始 map
 class SyncOutbox {
-  SyncOutbox({
-    List<Map<String, dynamic>>? rollcall,
-    List<Map<String, dynamic>>? lottery,
-  }) : rollcall = List<Map<String, dynamic>>.from(rollcall ?? []),
-       lottery = List<Map<String, dynamic>>.from(lottery ?? []);
+  SyncOutbox({List<Map<String, dynamic>>? rollcall})
+    : rollcall = List<Map<String, dynamic>>.from(rollcall ?? []);
 
   final List<Map<String, dynamic>> rollcall;
-  final List<Map<String, dynamic>> lottery;
 
-  bool get isEmpty => rollcall.isEmpty && lottery.isEmpty;
-  int get length => rollcall.length + lottery.length;
+  bool get isEmpty => rollcall.isEmpty;
+  int get length => rollcall.length;
 
-  List<Map<String, dynamic>> forKind(String kind) =>
-      kind == 'rollcall' ? rollcall : lottery;
+  List<Map<String, dynamic>> forKind(String kind) {
+    if (kind != 'rollcall') {
+      throw ArgumentError.value(kind, 'kind', '仅支持 rollcall');
+    }
+    return rollcall;
+  }
 
   void removeUids(String kind, Set<String> uids) {
     forKind(kind).removeWhere((r) => uids.contains(r['uid']));
   }
 
-  Map<String, dynamic> toJson() => {'rollcall': rollcall, 'lottery': lottery};
+  Map<String, dynamic> toJson() => {'rollcall': rollcall};
 
   factory SyncOutbox.fromJson(Map<String, dynamic> json) => SyncOutbox(
     rollcall: ((json['rollcall'] as List?) ?? [])
-        .whereType<Map>()
-        .map((e) => e.map((k, v) => MapEntry(k.toString(), v)))
-        .toList(),
-    lottery: ((json['lottery'] as List?) ?? [])
         .whereType<Map>()
         .map((e) => e.map((k, v) => MapEntry(k.toString(), v)))
         .toList(),

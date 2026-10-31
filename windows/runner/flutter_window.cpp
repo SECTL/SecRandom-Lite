@@ -60,7 +60,7 @@ bool FlutterWindow::OnCreate() {
             return std::get<int64_t>(value);
           };
           roll_call_window_->SetAppearance(static_cast<int>(integer("size")),
-              static_cast<unsigned int>(integer("color")), static_cast<int>(integer("radius")));
+              static_cast<unsigned int>(integer("color")));
           result->Success();
         } else if (call.method_name() == "showFloatingWindow") {
           if (roll_call_window_->Show()) {

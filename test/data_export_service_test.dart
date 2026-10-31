@@ -20,7 +20,7 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       exportService = DataExportService();
       dataService = DataService();
-      
+
       // 创建临时目录
       tempDir = path.join(Directory.current.path, 'test_temp');
       final dir = Directory(tempDir);
@@ -38,24 +38,20 @@ void main() {
     });
 
     test('exportData should throw ArgumentError for empty types', () async {
-      expect(
-        () => exportService.exportData({}, tempDir),
-        throwsArgumentError,
-      );
+      expect(() => exportService.exportData({}, tempDir), throwsArgumentError);
     });
 
     test('exportData should export config to JSON file', () async {
-      final filePath = await exportService.exportData(
-        {ExportType.config},
-        tempDir,
-      );
-      
+      final filePath = await exportService.exportData({
+        ExportType.config,
+      }, tempDir);
+
       expect(filePath, endsWith('.json'));
       expect(filePath, contains('config'));
-      
+
       final file = File(filePath);
       expect(await file.exists(), true);
-      
+
       final content = await file.readAsString();
       expect(content, contains('"version"'));
       expect(content, contains('"exportTime"'));
@@ -65,57 +61,57 @@ void main() {
     test('exportData should export students to JSON file', () async {
       // 先保存一些测试数据
       await dataService.saveStudents([]);
-      
-      final filePath = await exportService.exportData(
-        {ExportType.students},
-        tempDir,
-      );
-      
+
+      final filePath = await exportService.exportData({
+        ExportType.students,
+      }, tempDir);
+
       expect(filePath, endsWith('.json'));
       expect(filePath, contains('students'));
-      
+
       final file = File(filePath);
       expect(await file.exists(), true);
     });
 
     test('exportData should export history to JSON file', () async {
-      final filePath = await exportService.exportData(
-        {ExportType.history},
-        tempDir,
-      );
-      
+      final filePath = await exportService.exportData({
+        ExportType.history,
+      }, tempDir);
+
       expect(filePath, endsWith('.json'));
       expect(filePath, contains('history'));
-      
+
       final file = File(filePath);
       expect(await file.exists(), true);
     });
 
     test('exportData should export multiple types to ZIP file', () async {
-      final filePath = await exportService.exportData(
-        {ExportType.config, ExportType.students, ExportType.history},
-        tempDir,
-      );
-      
+      final filePath = await exportService.exportData({
+        ExportType.config,
+        ExportType.students,
+        ExportType.history,
+      }, tempDir);
+
       expect(filePath, endsWith('.zip'));
       expect(filePath, contains('secrandom_backup'));
-      
+
       final file = File(filePath);
       expect(await file.exists(), true);
-      
+
       // 验证文件大小大于0
       final fileSize = await file.length();
       expect(fileSize, greaterThan(0));
     });
 
     test('exportData should export all types to ZIP file', () async {
-      final filePath = await exportService.exportData(
-        {ExportType.history, ExportType.lottery, ExportType.config, ExportType.students},
-        tempDir,
-      );
-      
+      final filePath = await exportService.exportData({
+        ExportType.history,
+        ExportType.config,
+        ExportType.students,
+      }, tempDir);
+
       expect(filePath, endsWith('.zip'));
-      
+
       final file = File(filePath);
       expect(await file.exists(), true);
     });

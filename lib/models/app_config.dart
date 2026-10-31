@@ -21,9 +21,7 @@ class AppConfig {
   classGroups; // Map of class name to list of groups
   final bool nonRepeatEnabled;
   final double rollcallResultFontSize;
-  final double lotteryResultFontSize;
   final AnimationMode rollcallAnimationMode;
-  final AnimationMode lotteryAnimationMode;
 
   AppConfig({
     required this.themeMode,
@@ -33,9 +31,7 @@ class AppConfig {
     this.classGroups = const {},
     this.nonRepeatEnabled = true,
     this.rollcallResultFontSize = 48,
-    this.lotteryResultFontSize = 48,
     this.rollcallAnimationMode = AnimationMode.auto,
-    this.lotteryAnimationMode = AnimationMode.auto,
   });
 
   Map<String, dynamic> toJson() {
@@ -47,9 +43,7 @@ class AppConfig {
       'class_groups': classGroups,
       'non_repeat_enabled': nonRepeatEnabled,
       'rollcall_result_font_size': rollcallResultFontSize,
-      'lottery_result_font_size': lotteryResultFontSize,
       'rollcall_animation_mode': rollcallAnimationMode.toJsonValue(),
-      'lottery_animation_mode': lotteryAnimationMode.toJsonValue(),
     };
   }
 
@@ -74,12 +68,9 @@ class AppConfig {
       nonRepeatEnabled: json['non_repeat_enabled'] as bool? ?? true,
       rollcallResultFontSize:
           (json['rollcall_result_font_size'] as num?)?.toDouble() ?? 48,
-      lotteryResultFontSize:
-          (json['lottery_result_font_size'] as num?)?.toDouble() ?? 48,
-      rollcallAnimationMode:
-          AnimationModeX.fromJsonValue(json['rollcall_animation_mode']),
-      lotteryAnimationMode:
-          AnimationModeX.fromJsonValue(json['lottery_animation_mode']),
+      rollcallAnimationMode: AnimationModeX.fromJsonValue(
+        json['rollcall_animation_mode'],
+      ),
     );
   }
 
@@ -93,9 +84,7 @@ class AppConfig {
       classGroups: {},
       nonRepeatEnabled: true,
       rollcallResultFontSize: 48,
-      lotteryResultFontSize: 48,
       rollcallAnimationMode: AnimationMode.auto,
-      lotteryAnimationMode: AnimationMode.auto,
     );
   }
 }

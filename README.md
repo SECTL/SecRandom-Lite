@@ -83,12 +83,10 @@ secrandom_lite/
 │   ├── main.dart                 # 应用入口
 │   ├── models/                   # 数据模型
 │   │   ├── student.dart          # 学生模型
-│   │   ├── prize.dart            # 奖品模型
 │   │   ├── history_record.dart   # 历史记录模型
 │   │   └── app_config.dart       # 应用配置模型
 │   ├── services/                 # 业务逻辑
 │   │   ├── random_service.dart   # 随机抽取服务
-│   │   ├── lottery_service.dart  # 抽奖服务
 │   │   ├── data_service.dart     # 数据服务
 │   │   └── excel_import_service.dart # Excel 导入服务
 │   ├── providers/                # 状态管理
@@ -96,7 +94,6 @@ secrandom_lite/
 │   │   └── auth_provider.dart    # 认证状态
 │   ├── screens/                  # 页面
 │   │   ├── home_screen.dart      # 主页
-│   │   ├── lottery_screen.dart   # 抽奖页
 │   │   ├── history/              # 历史记录
 │   │   └── settings/             # 设置页
 │   ├── widgets/                  # 可复用组件

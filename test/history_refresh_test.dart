@@ -26,7 +26,6 @@ class _FakeCloudSyncService extends CloudSyncService {
     return PullResult(
       newRecords: newRecordsOnSuccess,
       rollcallContributions: const {},
-      lotteryContributions: const {},
       students: const [],
     );
   }
@@ -34,7 +33,6 @@ class _FakeCloudSyncService extends CloudSyncService {
   @override
   Future<bool> pushAll({
     required Map<String, int> ownRollcall,
-    required Map<String, int> ownLottery,
     List<Student>? students,
   }) async => true;
 

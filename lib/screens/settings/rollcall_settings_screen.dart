@@ -149,12 +149,11 @@ class RollCallSettingsScreen extends StatelessWidget {
       return;
     }
 
-    FilePickerResult? result;
+    PlatformFile? file;
     try {
-      result = await FilePicker.platform.pickFiles(
+      file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['xlsx', 'txt'],
-        withData: true,
       );
     } catch (e) {
       if (!context.mounted) return;
@@ -162,9 +161,8 @@ class RollCallSettingsScreen extends StatelessWidget {
       return;
     }
 
-    if (result == null || !context.mounted) return;
+    if (file == null || !context.mounted) return;
 
-    final file = result.files.single;
     final extension = file.name.split('.').last.toLowerCase();
 
     if (!context.mounted) return;
@@ -175,23 +173,13 @@ class RollCallSettingsScreen extends StatelessWidget {
     );
 
     try {
+      final bytes = await file.readAsBytes();
       ImportResult importResult;
       switch (extension) {
         case 'xlsx':
-          if (file.bytes == null) {
-            if (context.mounted) Navigator.pop(context);
-            if (context.mounted) _showErrorDialog(context, '无法读取文件内容');
-            return;
-          }
-          importResult = await ExcelImportService.parseExcel(file.bytes!);
+          importResult = await ExcelImportService.parseExcel(bytes);
           break;
         case 'txt':
-          final bytes = file.bytes;
-          if (bytes == null) {
-            if (context.mounted) Navigator.pop(context);
-            if (context.mounted) _showErrorDialog(context, '无法读取文件内容');
-            return;
-          }
           importResult = await ExcelImportService.parseTxt(utf8.decode(bytes));
           break;
         default:

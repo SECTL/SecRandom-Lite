@@ -44,7 +44,6 @@ class _FakeCloudSyncService extends CloudSyncService {
   @override
   Future<bool> pushAll({
     required Map<String, int> ownRollcall,
-    required Map<String, int> ownLottery,
     List<Student>? students,
   }) async {
     pushAllCalls++;
@@ -119,9 +118,7 @@ void main() {
       hasData: true,
       snapshot: CloudFullSnapshot(
         rollcallRecords: [_cloudRecord('cloud:1', '云端甲')],
-        lotteryRecords: const [],
         rollcallContributions: const {},
-        lotteryContributions: const {},
         students: [_student('云端学生')],
       ),
     );
@@ -171,9 +168,7 @@ void main() {
       hasData: true,
       snapshot: CloudFullSnapshot(
         rollcallRecords: [_cloudRecord('cloud:1', '云端甲')],
-        lotteryRecords: const [],
         rollcallContributions: const {},
-        lotteryContributions: const {},
         students: [_student('云端学生')],
       ),
     );

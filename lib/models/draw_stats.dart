@@ -1,11 +1,10 @@
-import 'lottery_record.dart';
-
 /// 抽取聚合统计：每人被抽中次数
 ///
-/// 独立于历史记录存储，用于公平抽取权重计算和统计展示。
+/// 独立于历史记录存储，用于公平抽取权重计算。
 /// 与历史分片解耦：公平抽取只读此统计，不依赖历史是否完整下载。
 class DrawStats {
-  DrawStats([Map<String, int>? counts]) : _counts = Map<String, int>.from(counts ?? {});
+  DrawStats([Map<String, int>? counts])
+    : _counts = Map<String, int>.from(counts ?? {});
 
   final Map<String, int> _counts;
 
@@ -60,35 +59,15 @@ class DrawStats {
     final stats = DrawStats();
     final delimiter = RegExp(r'[,，]');
     for (final raw in historyNames) {
-      for (final name in raw.split(delimiter).map((e) => e.trim()).where((e) => e.isNotEmpty)) {
+      for (final name
+          in raw
+              .split(delimiter)
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty)) {
         stats.increment(name);
       }
     }
     return stats;
-  }
-
-  /// 抽奖记录的统计键：优先中奖人姓名，回退奖品名（人名奖池下即人名）
-  static String? lotteryStatKey(LotteryRecord record) {
-    final student = record.studentName?.trim();
-    if (student != null && student.isNotEmpty) return student;
-    final prize = record.prizeName.trim();
-    return prize.isEmpty ? null : prize;
-  }
-
-  /// 从抽奖历史重建统计（回退路径）
-  static DrawStats fromLotteryRecords(Iterable<LotteryRecord> records) {
-    final stats = DrawStats();
-    for (final record in records) {
-      stats.addLotteryRecord(record);
-    }
-    return stats;
-  }
-
-  /// 增量计入一条抽奖中奖记录
-  void addLotteryRecord(LotteryRecord record) {
-    final key = lotteryStatKey(record);
-    if (key == null) return;
-    increment(key, record.drawCount < 1 ? 1 : record.drawCount);
   }
 
   /// 序列化

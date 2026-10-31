@@ -9,7 +9,6 @@ import '../widgets/name_display.dart';
 import '../widgets/nav_rail.dart';
 import '../widgets/slide_panel.dart';
 import 'history/history_screen.dart';
-import 'lottery_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -38,8 +37,9 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     unawaited(_quickEntryService.initialize());
     // 悬浮窗点击或 Android 磁贴点击都落到点名页
-    _openRollCallSubscription =
-        _quickEntryService.openRollCallRequests.listen((_) {
+    _openRollCallSubscription = _quickEntryService.openRollCallRequests.listen((
+      _,
+    ) {
       if (!mounted) return;
       if (SlidePanelOverlay.isShowing) {
         SlidePanelOverlay.hide();
@@ -243,9 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           Container(
             key: _rollCallPortraitPanelKey,
-            decoration: BoxDecoration(
-              color: Theme.of(context).cardColor,
-            ),
+            decoration: BoxDecoration(color: Theme.of(context).cardColor),
             constraints: const BoxConstraints(maxHeight: _kNarrowPanelHeight),
             child: const Padding(
               padding: EdgeInsets.all(8),
@@ -322,10 +320,8 @@ class _HomeScreenState extends State<HomeScreen> {
       case 0:
         return _buildRollCallScreen();
       case 1:
-        return const LotteryScreen();
-      case 2:
         return const HistoryScreen();
-      case 3:
+      case 2:
         return const SettingsScreen();
       default:
         return const SizedBox.shrink();
@@ -346,56 +342,53 @@ class _HomeScreenState extends State<HomeScreen> {
           final bool isRailVisible = constraints.maxWidth >= _kRailMinWidth;
 
           return Scaffold(
-          bottomNavigationBar: !isRailVisible
-              ? NavigationBar(
-                  selectedIndex: _selectedIndex,
-                  onDestinationSelected: (index) {
-                    if (SlidePanelOverlay.isShowing) {
-                      SlidePanelOverlay.hide();
-                    }
-                    setState(() => _selectedIndex = index);
-                  },
-                  destinations: const [
-                    NavigationDestination(
-                      icon: Icon(Icons.people_outline),
-                      label: '点名',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.card_giftcard_outlined),
-                      label: '抽奖',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.history_outlined),
-                      label: '历史记录',
-                    ),
-                    NavigationDestination(
-                      icon: Icon(Icons.settings_outlined),
-                      label: '设置',
-                    ),
-                  ],
-                )
-              : null,
-          body: Row(
-            children: [
-              if (isRailVisible)
-                NavRail(
-                  selectedIndex: _selectedIndex,
-                  onDestinationSelected: (int index) {
-                    if (SlidePanelOverlay.isShowing) {
-                      SlidePanelOverlay.hide();
-                    }
-                    setState(() {
-                      _selectedIndex = index;
-                    });
-                  },
-                ),
-              if (isRailVisible) const VerticalDivider(thickness: 1, width: 1),
-              Expanded(child: _buildBody()),
-            ],
-          ),
-        );
-      },
-    ),
+            bottomNavigationBar: !isRailVisible
+                ? NavigationBar(
+                    selectedIndex: _selectedIndex,
+                    onDestinationSelected: (index) {
+                      if (SlidePanelOverlay.isShowing) {
+                        SlidePanelOverlay.hide();
+                      }
+                      setState(() => _selectedIndex = index);
+                    },
+                    destinations: const [
+                      NavigationDestination(
+                        icon: Icon(Icons.people_outline),
+                        label: '点名',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.history_outlined),
+                        label: '历史记录',
+                      ),
+                      NavigationDestination(
+                        icon: Icon(Icons.settings_outlined),
+                        label: '设置',
+                      ),
+                    ],
+                  )
+                : null,
+            body: Row(
+              children: [
+                if (isRailVisible)
+                  NavRail(
+                    selectedIndex: _selectedIndex,
+                    onDestinationSelected: (int index) {
+                      if (SlidePanelOverlay.isShowing) {
+                        SlidePanelOverlay.hide();
+                      }
+                      setState(() {
+                        _selectedIndex = index;
+                      });
+                    },
+                  ),
+                if (isRailVisible)
+                  const VerticalDivider(thickness: 1, width: 1),
+                Expanded(child: _buildBody()),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }

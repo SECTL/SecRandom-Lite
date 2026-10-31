@@ -1,19 +1,21 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:secrandom_lite/models/history_record.dart';
-import 'package:secrandom_lite/models/lottery_record.dart';
 import 'package:secrandom_lite/services/cloud/sync_identity.dart';
 
-HistoryRecord rollcall({int id = 1, String className = '1', String time = '2026-01-01 08:00:00'}) =>
-    HistoryRecord(
-      id: id,
-      name: '张三',
-      drawMethod: 1,
-      drawTime: time,
-      drawPeopleNumbers: 1,
-      drawGroup: '所有小组',
-      drawGender: '所有性别',
-      className: className,
-    );
+HistoryRecord rollcall({
+  int id = 1,
+  String className = '1',
+  String time = '2026-01-01 08:00:00',
+}) => HistoryRecord(
+  id: id,
+  name: '张三',
+  drawMethod: 1,
+  drawTime: time,
+  drawPeopleNumbers: 1,
+  drawGroup: '所有小组',
+  drawGender: '所有性别',
+  className: className,
+);
 
 void main() {
   test('新 uid 由设备与序号拼接', () {
@@ -29,17 +31,6 @@ void main() {
     expect(a.startsWith('legacy:'), isTrue);
   });
 
-  test('旧抽奖记录派生 uid 稳定且与奖池/id 绑定', () {
-    LotteryRecord rec(String id) => LotteryRecord(
-          id: id,
-          poolName: '开学奖品',
-          prizeName: '笔记本',
-          drawTime: DateTime(2026, 1, 1, 8),
-        );
-    expect(deriveLegacyLotteryUid(rec('a')), deriveLegacyLotteryUid(rec('a')));
-    expect(deriveLegacyLotteryUid(rec('a')), isNot(deriveLegacyLotteryUid(rec('b'))));
-  });
-
   test('记录带 uid 时 toJson 往返保留，缺失时 fromJson 容忍', () {
     final withUid = rollcall().copyWithUid('dev-1:1');
     expect(HistoryRecord.fromJson(withUid.toJson()).uid, 'dev-1:1');
@@ -53,21 +44,9 @@ void main() {
     expect(uid, startsWith('legacy:'));
     expect(json['uid'], uid);
     expect(ensureHistoryUid(json), uid);
-    expect(ensureHistoryUid(rollcall().copyWithUid('dev-1:1').toJson()), 'dev-1:1');
-  });
-
-  test('ensureLotteryUid 为缺失 uid 的旧记录补稳定 uid', () {
-    final record = LotteryRecord(
-      id: 'lottery-1',
-      poolName: '开学奖品',
-      prizeName: '笔记本',
-      drawTime: DateTime(2026, 1, 1, 8),
+    expect(
+      ensureHistoryUid(rollcall().copyWithUid('dev-1:1').toJson()),
+      'dev-1:1',
     );
-    final json = record.toJson()..remove('uid');
-    final uid = ensureLotteryUid(json);
-    expect(uid, startsWith('legacy:'));
-    expect(json['uid'], uid);
-    expect(ensureLotteryUid(json), uid);
-    expect(ensureLotteryUid(record.copyWithUid('dev-1:1').toJson()), 'dev-1:1');
   });
 }

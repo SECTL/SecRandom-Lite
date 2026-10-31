@@ -25,17 +25,12 @@ class NavRail extends StatelessWidget {
                 minWidth: 72,
                 groupAlignment: -1.0,
                 // Removed leading icon as requested
-                leading: const SizedBox(height: 16), 
+                leading: const SizedBox(height: 16),
                 destinations: const [
                   NavigationRailDestination(
                     icon: Icon(Icons.people_outline),
                     selectedIcon: Icon(Icons.people),
                     label: Text('点名'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.card_giftcard_outlined),
-                    selectedIcon: Icon(Icons.card_giftcard),
-                    label: Text('抽奖'),
                   ),
                   NavigationRailDestination(
                     icon: Icon(Icons.history_outlined),

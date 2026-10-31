@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:secrandom_lite/models/history_record.dart';
-import 'package:secrandom_lite/models/lottery_record.dart';
 import 'package:secrandom_lite/models/student.dart';
 import 'package:secrandom_lite/providers/app_provider.dart';
 import 'package:secrandom_lite/services/cloud/cloud_sync_service.dart';
@@ -41,7 +40,6 @@ class _FakeCloudSyncService extends CloudSyncService {
   @override
   Future<bool> pushAll({
     required Map<String, int> ownRollcall,
-    required Map<String, int> ownLottery,
     List<Student>? students,
   }) async {
     pushAllCalls++;
@@ -101,7 +99,6 @@ void main() {
     await data.saveSyncOutbox({});
     await data.saveStudents(const []);
     await data.clearHistoryRecords();
-    await data.clearAllLotteryRecords();
   });
 
   test('云端无数据：登录后上传本地（pushAll），不覆盖', () async {
@@ -137,12 +134,10 @@ void main() {
       cloudHasData: true,
       snapshot: CloudFullSnapshot(
         rollcallRecords: [_cloudRecord(1, 'dev-b:1', '云端甲')],
-        lotteryRecords: const [],
         rollcallContributions: {
           'dev-a': {'张三': 2},
           'dev-b': {'李四': 3},
         },
-        lotteryContributions: const {},
         students: [
           Student(
             id: 1,
@@ -202,63 +197,6 @@ void main() {
     expect(provider.rollcallStats.countOf('李四'), 3);
   });
 
-  test('登录并集合同步抽奖历史', () async {
-    final service = _FakeCloudSyncService(
-      cloudHasData: true,
-      snapshot: const CloudFullSnapshot(
-        rollcallRecords: [],
-        lotteryRecords: [
-          {
-            'id': 'cloud-1',
-            'uid': 'dev-b:1',
-            'poolName': '池',
-            'prizeName': '云端奖品',
-            'studentName': null,
-            'groupName': null,
-            'gender': null,
-            'drawTime': '2026-02-02T09:00:00.000',
-            'drawCount': 1,
-            'classFilter': null,
-            'groupFilter': null,
-            'genderFilter': null,
-          },
-        ],
-        rollcallContributions: {},
-        lotteryContributions: {},
-        students: [],
-      ),
-    );
-    final provider = AppProvider(cloudSyncService: service);
-    addTearDown(provider.dispose);
-    await provider.reloadData();
-
-    await DataService().addLotteryRecord(
-      LotteryRecord(
-        id: 'local-1',
-        poolName: '池',
-        prizeName: '本地奖品',
-        drawTime: DateTime(2026, 1, 1, 8),
-      ),
-    );
-    await provider.reloadData();
-
-    await provider.setAuthState(true);
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-
-    final records = await DataService().loadLotteryRecords();
-    expect(records.any((r) => r.prizeName == '云端奖品'), isTrue);
-    expect(records.any((r) => r.prizeName == '本地奖品'), isTrue);
-    final outbox = await provider.cloudSyncService.loadOutbox();
-    expect(
-      outbox.lottery.any((record) => record['prizeName'] == '本地奖品'),
-      isTrue,
-    );
-    expect(
-      outbox.lottery.any((record) => record['prizeName'] == '云端奖品'),
-      isFalse,
-    );
-  });
-
   test('首次登录（本地无基线）：云端严格覆盖本地，不上传', () async {
     // 本机 deviceId 由假服务注入为 'dev-test'，故本机贡献挂在 dev-test 上
     final service = _FakeCloudSyncService(
@@ -269,12 +207,10 @@ void main() {
           _cloudRecord(1, 'dev-test:5', '云端五'),
           _cloudRecord(2, 'dev-b:1', '云端他机'),
         ],
-        lotteryRecords: const [],
         rollcallContributions: {
           'dev-test': {'本机人': 4},
           'dev-b': {'他机人': 1},
         },
-        lotteryContributions: const {},
         students: const [],
       ),
     );
@@ -303,9 +239,7 @@ void main() {
       cloudHasData: true,
       snapshot: const CloudFullSnapshot(
         rollcallRecords: [],
-        lotteryRecords: [],
         rollcallContributions: {},
-        lotteryContributions: {},
         students: [],
       ),
     );
@@ -371,7 +305,6 @@ class _ThrowingCloudSyncService extends CloudSyncService {
   @override
   Future<bool> pushAll({
     required Map<String, int> ownRollcall,
-    required Map<String, int> ownLottery,
     List<Student>? students,
   }) async {
     pushAllCalls++;

@@ -113,7 +113,7 @@ void main() {
   );
 
   test('外观参数发送到原生窗口并持久化', () async {
-    final appearance = {'size': 100, 'color': 0xFF30343B, 'radius': 24};
+    final appearance = {'size': 100, 'color': 0xFF30343B};
     await service.saveAppearance(appearance);
     expect(calls, contains('setFloatingAppearance'));
     expect(await service.loadAppearance(), appearance);

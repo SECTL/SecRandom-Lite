@@ -136,7 +136,6 @@ class CloudSyncService {
   Future<void> clearOutbox() => _withOutboxLock(() async {
     final outbox = await loadOutbox();
     outbox.rollcall.clear();
-    outbox.lottery.clear();
     await _saveOutbox(outbox);
   });
 
@@ -202,7 +201,7 @@ class CloudSyncService {
     });
   }
 
-  /// 丢弃 outbox 中满足条件的记录（清空某班级/奖池时使用）。
+  /// 丢弃 outbox 中满足条件的记录（清空某班级时使用）。
   Future<void> removeFromOutboxWhere(
     String kind,
     bool Function(Map<String, dynamic> record) test,
@@ -228,14 +227,14 @@ class CloudSyncService {
     await _withOutboxLock(() async {
       final outbox = await loadOutbox();
       if (outbox.isEmpty) return;
-      for (final kind in const ['rollcall', 'lottery']) {
+      for (final kind in const ['rollcall']) {
         batch[kind] = List<Map<String, dynamic>>.from(outbox.forKind(kind));
       }
     });
     if (batch.values.every((records) => records.isEmpty)) return;
 
     final uploadedUids = <String, Set<String>>{};
-    for (final kind in const ['rollcall', 'lottery']) {
+    for (final kind in const ['rollcall']) {
       final records = batch[kind]!;
       if (records.isEmpty) continue;
       final manager = HistoryStreamManager(
@@ -270,7 +269,6 @@ class CloudSyncService {
   /// 避免整包覆盖另一端刚修改的名单。
   Future<bool> pushAll({
     required Map<String, int> ownRollcall,
-    required Map<String, int> ownLottery,
     List<Student>? students,
   }) async {
     _status = SyncStatus.syncing;
@@ -281,10 +279,6 @@ class CloudSyncService {
       await _api.putKv(
         key: 'srlite.stats.v2.rollcall.$deviceId',
         value: ownRollcall,
-      );
-      await _api.putKv(
-        key: 'srlite.stats.v2.lottery.$deviceId',
-        value: ownLottery,
       );
       await _updateRegistryEntry(deviceId, (_) {});
       _status = SyncStatus.success;
@@ -312,57 +306,49 @@ class CloudSyncService {
       final registry = await _loadRegistry();
       final devices = await _resolveRemoteDevices(registry);
 
-      final idsByKind = {
-        'rollcall': await existingUids('rollcall'),
-        'lottery': await existingUids('lottery'),
-      };
+      final rollcallUids = await existingUids('rollcall');
 
       var newRecords = 0;
       final incompleteStreams = <IncompleteStreamException>[];
       for (final remoteId in devices) {
         if (remoteId == deviceId) continue;
-        for (final kind in const ['rollcall', 'lottery']) {
-          final manager = HistoryStreamManager(
-            _api,
-            kind: kind,
-            deviceId: remoteId,
-          );
-          final cursor = state.pulled[remoteId]?[kind] ?? const SyncCursor();
-          final (List<Map<String, dynamic>>, SyncCursor) read;
-          try {
-            read = await manager.readFrom(remoteId, cursor);
-          } on IncompleteStreamException catch (e) {
-            // 分片缺失时不推进游标，避免把缺失分片当成空片永久跳过。
-            logger.w('Cloud v2 pull 跳过不完整流: $e');
-            incompleteStreams.add(e);
+        const kind = 'rollcall';
+        final manager = HistoryStreamManager(
+          _api,
+          kind: kind,
+          deviceId: remoteId,
+        );
+        final cursor = state.pulled[remoteId]?[kind] ?? const SyncCursor();
+        final (List<Map<String, dynamic>>, SyncCursor) read;
+        try {
+          read = await manager.readFrom(remoteId, cursor);
+        } on IncompleteStreamException catch (e) {
+          // 分片缺失时不推进游标，避免把缺失分片当成空片永久跳过。
+          logger.w('Cloud v2 pull 跳过不完整流: $e');
+          incompleteStreams.add(e);
+          continue;
+        }
+        final records = read.$1;
+        final nextCursor = read.$2;
+        if (records.isEmpty) continue;
+
+        final clearedAt = state.clearedAt[kind];
+        for (final json in records) {
+          final uid = ensureHistoryUid(json);
+          if (rollcallUids.contains(uid)) continue;
+          final time = _recordTime(json);
+          if (clearedAt != null && time != null && time.isBefore(clearedAt)) {
             continue;
           }
-          final records = read.$1;
-          final nextCursor = read.$2;
-          if (records.isEmpty) continue;
-
-          final seen = idsByKind[kind]!;
-          final clearedAt = state.clearedAt[kind];
-          for (final json in records) {
-            final uid = kind == 'rollcall'
-                ? ensureHistoryUid(json)
-                : ensureLotteryUid(json);
-            if (seen.contains(uid)) continue;
-            final time = _recordTime(kind, json);
-            if (clearedAt != null && time != null && time.isBefore(clearedAt)) {
-              continue;
-            }
-            await onNewRecord(kind, json);
-            seen.add(uid);
-            newRecords++;
-          }
-          (state.pulled[remoteId] ??= {})[kind] = nextCursor;
-          await saveState();
+          await onNewRecord(kind, json);
+          rollcallUids.add(uid);
+          newRecords++;
         }
+        (state.pulled[remoteId] ??= {})[kind] = nextCursor;
+        await saveState();
       }
 
       final rollcallContributions = await fetchRemoteStats('rollcall');
-      final lotteryContributions = await fetchRemoteStats('lottery');
       final cloudStudents = await fetchStudents();
       final clearState = await fetchClearState();
 
@@ -371,7 +357,6 @@ class CloudSyncService {
       return PullResult(
         newRecords: newRecords,
         rollcallContributions: rollcallContributions,
-        lotteryContributions: lotteryContributions,
         students: cloudStudents.students,
         studentTombstones: cloudStudents.tombstones,
         clearState: clearState,
@@ -406,21 +391,16 @@ class CloudSyncService {
     );
 
     for (final remoteId in devices) {
-      // 任一设备任一 kind 的历史流 total>0
-      for (final kind in const ['rollcall', 'lottery']) {
-        final manager = HistoryStreamManager(
-          _api,
-          kind: kind,
-          deviceId: remoteId,
-        );
-        final meta = await manager.loadMeta(remoteId);
-        if (meta.total > 0) return true;
-      }
+      // 任一设备点名历史流 total>0
+      final manager = HistoryStreamManager(
+        _api,
+        kind: 'rollcall',
+        deviceId: remoteId,
+      );
+      final meta = await manager.loadMeta(remoteId);
+      if (meta.total > 0) return true;
       // 任一设备统计贡献非空
       if ((await _statsContribution('rollcall', remoteId)).isNotEmpty) {
-        return true;
-      }
-      if ((await _statsContribution('lottery', remoteId)).isNotEmpty) {
         return true;
       }
     }
@@ -463,48 +443,38 @@ class CloudSyncService {
       );
 
       final rollcallByUid = <String, Map<String, dynamic>>{};
-      final lotteryByUid = <String, Map<String, dynamic>>{};
       final rollcallContributions = <String, Map<String, int>>{};
-      final lotteryContributions = <String, Map<String, int>>{};
 
       for (final remoteId in devices) {
-        for (final kind in const ['rollcall', 'lottery']) {
-          final manager = HistoryStreamManager(
-            _api,
-            kind: kind,
-            deviceId: remoteId,
-          );
-          // 完整性校验：读到的记录数必须与 meta.total 一致，否则说明分片
-          // 静默缺失（not-found 被当空）。严格覆盖宁可放弃本次同步，也不能
-          // 用不完整快照覆盖本地造成数据丢失。
-          final meta = await manager.loadMeta(remoteId);
-          final (records, _) = await manager.readFrom(
+        const kind = 'rollcall';
+        final manager = HistoryStreamManager(
+          _api,
+          kind: kind,
+          deviceId: remoteId,
+        );
+        // 完整性校验：读到的记录数必须与 meta.total 一致，否则说明分片
+        // 静默缺失（not-found 被当空）。严格覆盖宁可放弃本次同步，也不能
+        // 用不完整快照覆盖本地造成数据丢失。
+        final meta = await manager.loadMeta(remoteId);
+        final (records, _) = await manager.readFrom(
+          remoteId,
+          const SyncCursor(),
+        );
+        if (records.length != meta.total) {
+          throw IncompleteStreamException(
+            kind,
             remoteId,
-            const SyncCursor(),
+            meta.shards - 1,
+            expected: meta.total,
+            actual: records.length,
           );
-          if (records.length != meta.total) {
-            throw IncompleteStreamException(
-              kind,
-              remoteId,
-              meta.shards - 1,
-              expected: meta.total,
-              actual: records.length,
-            );
-          }
-          final target = kind == 'rollcall' ? rollcallByUid : lotteryByUid;
-          for (final json in records) {
-            final uid = kind == 'rollcall'
-                ? ensureHistoryUid(json)
-                : ensureLotteryUid(json);
-            target[uid] = json;
-          }
+        }
+        for (final json in records) {
+          final uid = ensureHistoryUid(json);
+          rollcallByUid[uid] = json;
         }
         rollcallContributions[remoteId] = await _statsContribution(
           'rollcall',
-          remoteId,
-        );
-        lotteryContributions[remoteId] = await _statsContribution(
-          'lottery',
           remoteId,
         );
       }
@@ -516,9 +486,7 @@ class CloudSyncService {
       _lastSyncAt = DateTime.now();
       return CloudFullSnapshot(
         rollcallRecords: rollcallByUid.values.toList(),
-        lotteryRecords: lotteryByUid.values.toList(),
         rollcallContributions: rollcallContributions,
-        lotteryContributions: lotteryContributions,
         students: cloudStudents.students,
         studentTombstones: cloudStudents.tombstones,
         clearState: clearState,
@@ -557,13 +525,8 @@ class CloudSyncService {
     return result;
   }
 
-  DateTime? _recordTime(String kind, Map<String, dynamic> json) {
-    if (kind == 'rollcall') {
-      return DateTime.tryParse(json['draw_time'] as String? ?? '');
-    }
-    final raw = json['drawTime'] as String?;
-    return raw == null ? null : DateTime.tryParse(raw);
-  }
+  DateTime? _recordTime(Map<String, dynamic> json) =>
+      DateTime.tryParse(json['draw_time'] as String? ?? '');
 
   Future<Map<String, dynamic>> _loadRegistry() async {
     try {
@@ -615,12 +578,12 @@ class CloudSyncService {
           final parts = key.split('.');
           if (isHistory) {
             if (parts.length < 6) continue;
-            if (parts[3] != 'rollcall' && parts[3] != 'lottery') continue;
+            if (parts[3] != 'rollcall') continue;
             final deviceId = parts[4];
             if (deviceId.isNotEmpty) devices.add(deviceId);
           } else {
             if (parts.length < 5) continue;
-            if (parts[3] != 'rollcall' && parts[3] != 'lottery') continue;
+            if (parts[3] != 'rollcall') continue;
             final deviceId = parts[4];
             if (deviceId.isNotEmpty) devices.add(deviceId);
           }
@@ -924,7 +887,6 @@ class PullResult {
   const PullResult({
     required this.newRecords,
     required this.rollcallContributions,
-    required this.lotteryContributions,
     required this.students,
     this.studentTombstones = const {},
     this.clearState = const CloudClearState(),
@@ -933,7 +895,6 @@ class PullResult {
 
   final int newRecords;
   final Map<String, Map<String, int>> rollcallContributions;
-  final Map<String, Map<String, int>> lotteryContributions;
   final List<Student> students;
   final Map<String, StudentTombstone> studentTombstones;
   final CloudClearState clearState;
@@ -946,9 +907,7 @@ class PullResult {
 class CloudFullSnapshot {
   const CloudFullSnapshot({
     required this.rollcallRecords,
-    required this.lotteryRecords,
     required this.rollcallContributions,
-    required this.lotteryContributions,
     required this.students,
     this.studentTombstones = const {},
     this.clearState = const CloudClearState(),
@@ -957,14 +916,8 @@ class CloudFullSnapshot {
   /// 所有设备点名历史并集（按 uid 去重）
   final List<Map<String, dynamic>> rollcallRecords;
 
-  /// 所有设备抽奖历史并集（按 uid 去重）
-  final List<Map<String, dynamic>> lotteryRecords;
-
   /// 全部设备的点名统计贡献；key: deviceId -> 计数
   final Map<String, Map<String, int>> rollcallContributions;
-
-  /// 全部设备的抽奖统计贡献；key: deviceId -> 计数
-  final Map<String, Map<String, int>> lotteryContributions;
 
   /// 学生名单
   final List<Student> students;

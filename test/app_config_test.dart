@@ -25,38 +25,31 @@ void main() {
   });
 
   group('AppConfig result font size', () {
-    test('fromJson should default result font sizes to 48 for old data', () {
+    test('fromJson should default result font size to 48 for old data', () {
       final config = AppConfig.fromJson({
         'theme_mode': 'system',
         'select_count': 1,
       });
 
       expect(config.rollcallResultFontSize, 48);
-      expect(config.lotteryResultFontSize, 48);
     });
 
-    test('toJson should persist result font sizes', () {
-      final config = AppConfig(
-        themeMode: 'dark',
-        rollcallResultFontSize: 52,
-        lotteryResultFontSize: 44,
-      );
+    test('toJson should persist result font size', () {
+      final config = AppConfig(themeMode: 'dark', rollcallResultFontSize: 52);
 
       final json = config.toJson();
       expect(json['rollcall_result_font_size'], 52);
-      expect(json['lottery_result_font_size'], 44);
     });
   });
 
   group('AppConfig animation mode', () {
-    test('fromJson should default animation modes to auto for old data', () {
+    test('fromJson should default animation mode to auto for old data', () {
       final config = AppConfig.fromJson({
         'theme_mode': 'system',
         'select_count': 1,
       });
 
       expect(config.rollcallAnimationMode, AnimationMode.auto);
-      expect(config.lotteryAnimationMode, AnimationMode.auto);
     });
 
     test('fromJson should fall back to auto for invalid animation values', () {
@@ -64,27 +57,22 @@ void main() {
         'theme_mode': 'system',
         'select_count': 1,
         'rollcall_animation_mode': 'invalid',
-        'lottery_animation_mode': '???',
       });
 
       expect(config.rollcallAnimationMode, AnimationMode.auto);
-      expect(config.lotteryAnimationMode, AnimationMode.auto);
     });
 
-    test('toJson should persist all animation modes independently', () {
+    test('toJson should persist animation mode', () {
       final config = AppConfig(
         themeMode: 'dark',
-        rollcallAnimationMode: AnimationMode.auto,
-        lotteryAnimationMode: AnimationMode.manualStop,
+        rollcallAnimationMode: AnimationMode.manualStop,
       );
 
       final json = config.toJson();
-      expect(json['rollcall_animation_mode'], 'auto');
-      expect(json['lottery_animation_mode'], 'manualStop');
+      expect(json['rollcall_animation_mode'], 'manualStop');
 
       final restored = AppConfig.fromJson(json);
-      expect(restored.rollcallAnimationMode, AnimationMode.auto);
-      expect(restored.lotteryAnimationMode, AnimationMode.manualStop);
+      expect(restored.rollcallAnimationMode, AnimationMode.manualStop);
     });
   });
 }

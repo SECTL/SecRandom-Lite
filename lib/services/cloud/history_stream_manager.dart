@@ -124,9 +124,7 @@ class HistoryStreamManager {
 
     final pending = <Map<String, dynamic>>[];
     for (final record in records) {
-      final uid = kind == 'rollcall'
-          ? ensureHistoryUid(record)
-          : ensureLotteryUid(record);
+      final uid = ensureHistoryUid(record);
       if (existingUids.add(uid)) {
         pending.add(Map<String, dynamic>.from(record));
       }

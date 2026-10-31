@@ -104,23 +104,19 @@ class _SettingsLayoutState extends State<SettingsLayout> {
                 return ListTile(
                   leading: item.leadingBuilder != null
                       ? item.leadingBuilder!(context)
-                      : Icon(
-                          item.icon,
-                          color: isSelected
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                      : TweenAnimationBuilder<Color?>(
+                          tween: ColorTween(
+                            end: isSelected
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+                          ),
+                          duration: kThemeChangeDuration,
+                          builder: (context, color, _) =>
+                              Icon(item.icon, color: color),
                         ),
                   title: item.titleBuilder != null
                       ? item.titleBuilder!(context)
-                      : Text(
-                          item.title,
-                          style: TextStyle(
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                            color: isSelected
-                                ? Theme.of(context).colorScheme.primary
-                                : Theme.of(context).colorScheme.onSurface,
-                          ),
-                        ),
+                      : Text(item.title),
                   subtitle: item.subtitleBuilder?.call(context),
                   selected: isSelected,
                   selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.24),

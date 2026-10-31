@@ -54,10 +54,10 @@ class AboutSettingsBody extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '一款面向课堂场景的随机点名与抽奖工具，帮助你更高效地完成点名、抽取和简单活动管理。',
+                  '一款面向课堂场景的随机点名工具，帮助你更高效地完成点名与抽取。',
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Container(
@@ -72,8 +72,8 @@ class AboutSettingsBody extends StatelessWidget {
                   child: Text(
                     '当前版本：$_version',
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: colorScheme.onSecondaryContainer,
-                        ),
+                      color: colorScheme.onSecondaryContainer,
+                    ),
                   ),
                 ),
               ],

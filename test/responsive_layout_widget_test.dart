@@ -1,6 +1,5 @@
 import 'package:secrandom_lite/providers/app_provider.dart';
 import 'package:secrandom_lite/screens/home_screen.dart';
-import 'package:secrandom_lite/screens/lottery_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -48,32 +47,6 @@ void main() {
       await _pumpWithSize(tester, const Size(600, 350), const HomeScreen());
       expect(
         find.byKey(const ValueKey('rollcall_layout_small')),
-        findsOneWidget,
-      );
-    },
-  );
-
-  testWidgets('LotteryScreen uses large layout on wide viewport', (
-    tester,
-  ) async {
-    await _pumpWithSize(tester, const Size(1400, 900), const LotteryScreen());
-    expect(find.byKey(const ValueKey('lottery_layout_large')), findsOneWidget);
-  });
-
-  testWidgets('LotteryScreen uses short layout on low-height viewport', (
-    tester,
-  ) async {
-    await _pumpWithSize(tester, const Size(1000, 250), const LotteryScreen());
-    expect(find.byKey(const ValueKey('lottery_layout_short')), findsOneWidget);
-    expect(find.byType(FloatingActionButton), findsNothing);
-  });
-
-  testWidgets(
-    'LotteryScreen uses small drawer layout when portrait result is too short',
-    (tester) async {
-      await _pumpWithSize(tester, const Size(600, 350), const LotteryScreen());
-      expect(
-        find.byKey(const ValueKey('lottery_layout_small')),
         findsOneWidget,
       );
     },

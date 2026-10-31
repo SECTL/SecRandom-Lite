@@ -77,24 +77,6 @@ class PersonalizationSettingsBody extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        SettingsSectionCard(
-          title: '抽奖设置',
-          icon: Icons.card_giftcard,
-          children: [
-            _AnimationModeTile(
-              title: '抽奖动画模式',
-              currentMode: appProvider.lotteryAnimationMode,
-              onModeChanged: appProvider.setLotteryAnimationMode,
-            ),
-            const SizedBox(height: 12),
-            _FontSizeSliderTile(
-              label: '抽奖结果字号',
-              value: appProvider.lotteryResultFontSize,
-              onChanged: appProvider.setLotteryResultFontSize,
-            ),
-          ],
-        ),
       ],
     );
   }
@@ -128,24 +110,6 @@ class PersonalizationSettingsBody extends StatelessWidget {
               label: '抽人结果字号',
               value: appProvider.rollcallResultFontSize,
               onChanged: appProvider.setRollcallResultFontSize,
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        SettingsSectionCard(
-          title: '抽奖设置',
-          icon: Icons.card_giftcard,
-          children: [
-            _AnimationModeTile(
-              title: '抽奖动画模式',
-              currentMode: appProvider.lotteryAnimationMode,
-              onModeChanged: appProvider.setLotteryAnimationMode,
-            ),
-            const SizedBox(height: 12),
-            _FontSizeSliderTile(
-              label: '抽奖结果字号',
-              value: appProvider.lotteryResultFontSize,
-              onChanged: appProvider.setLotteryResultFontSize,
             ),
           ],
         ),
@@ -189,18 +153,9 @@ class _FontSizeSliderTile extends StatelessWidget {
 }
 
 const List<DropdownMenuItem<AnimationMode>> _animationModeOptions = [
-  DropdownMenuItem(
-    value: AnimationMode.manualStop,
-    child: Text('手动停止'),
-  ),
-  DropdownMenuItem(
-    value: AnimationMode.auto,
-    child: Text('自动播放'),
-  ),
-  DropdownMenuItem(
-    value: AnimationMode.none,
-    child: Text('无动画'),
-  ),
+  DropdownMenuItem(value: AnimationMode.manualStop, child: Text('手动停止')),
+  DropdownMenuItem(value: AnimationMode.auto, child: Text('自动播放')),
+  DropdownMenuItem(value: AnimationMode.none, child: Text('无动画')),
 ];
 
 class _AnimationModeTile extends StatelessWidget {
@@ -264,18 +219,9 @@ class _ThemeModeTile extends StatelessWidget {
             border: OutlineInputBorder(),
           ),
           items: const [
-            DropdownMenuItem(
-              value: ThemeMode.system,
-              child: Text('跟随系统'),
-            ),
-            DropdownMenuItem(
-              value: ThemeMode.light,
-              child: Text('浅色'),
-            ),
-            DropdownMenuItem(
-              value: ThemeMode.dark,
-              child: Text('深色'),
-            ),
+            DropdownMenuItem(value: ThemeMode.system, child: Text('跟随系统')),
+            DropdownMenuItem(value: ThemeMode.light, child: Text('浅色')),
+            DropdownMenuItem(value: ThemeMode.dark, child: Text('深色')),
           ],
           onChanged: (value) {
             if (value != null) {

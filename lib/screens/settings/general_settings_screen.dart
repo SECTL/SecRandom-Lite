@@ -62,40 +62,7 @@ class GeneralSettingsBody extends StatelessWidget {
   }
 }
 
-/// 通用设置中的分区：只保留标题和选项，不再使用卡片容器。
-class _SettingsSection extends StatelessWidget {
-  const _SettingsSection({
-    required this.title,
-    required this.icon,
-    required this.children,
-  });
-
-  final String title;
-  final IconData icon;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(icon),
-          title: Text(
-            title,
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-          ),
-        ),
-        ...children,
-      ],
-    );
-  }
-}
-
-/// 点名悬浮窗开关（仅 Windows 桌面）。
+/// 点名悬浮窗分区（仅 Windows 桌面）。
 ///
 /// 不受支持的平台整块不渲染，也不占位，避免留下多余间距。
 class _FloatingWindowSection extends StatelessWidget {
@@ -113,11 +80,7 @@ class _FloatingWindowSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _SettingsSection(
-          title: '点名悬浮窗',
-          icon: Icons.picture_in_picture_alt_outlined,
-          children: [_FloatingWindowTile()],
-        ),
+        const _FloatingWindowTile(),
         SizedBox(height: spacing),
       ],
     );
@@ -242,11 +205,8 @@ class _FloatingWindowTileState extends State<_FloatingWindowTile> {
   StreamSubscription<bool>? _stateSubscription;
   bool _enabled = false;
   bool _loading = true;
-  Map<String, int> _appearance = {
-    'size': 80,
-    'color': 0xFFBDEAFF,
-    'radius': 18,
-  };
+  bool _loaded = false;
+  Map<String, int> _appearance = {'size': 64, 'color': 0xFFBDEAFF};
   Future<void> _pendingAppearance = Future<void>.value();
 
   void _changeAppearance(String key, int value) {
@@ -341,6 +301,7 @@ class _FloatingWindowTileState extends State<_FloatingWindowTile> {
     setState(() {
       _enabled = enabled;
       _loading = false;
+      _loaded = true;
     });
   }
 
@@ -369,120 +330,94 @@ class _FloatingWindowTileState extends State<_FloatingWindowTile> {
 
   @override
   Widget build(BuildContext context) {
-    final background = Color(_appearance['color']!);
-    final foreground = background.computeLuminance() > 0.4
-        ? Colors.black87
-        : Colors.white;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('显示悬浮窗'),
-          subtitle: const Text('点击打开点名页，悬浮窗保持显示'),
-          value: _enabled,
-          onChanged: _loading ? null : _setEnabled,
-        ),
-        SizedBox(
-          height: 170,
-          child: Center(
-            child: Container(
-              key: const ValueKey('floating_window_preview'),
-              width: _appearance['size']!.toDouble(),
-              height: _appearance['size']!.toDouble(),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: background,
-                borderRadius: BorderRadius.circular(
-                  _appearance['radius']!.toDouble(),
-                ),
-              ),
-              child: Text(
-                '点名',
-                style: TextStyle(
-                  color: foreground,
-                  fontSize: _appearance['size']! * 0.25,
-                ),
-              ),
+        MergeSemantics(
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.picture_in_picture_alt_outlined),
+            title: Text(
+              '点名悬浮窗',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
+            subtitle: const Text('点击打开点名页，悬浮窗保持显示'),
+            trailing: _loaded
+                ? Switch(
+                    key: const ValueKey('floating_window_switch'),
+                    value: _enabled,
+                    onChanged: _loading ? null : _setEnabled,
+                  )
+                : const SizedBox(width: 52, height: 48),
+            onTap: !_loaded || _loading ? null : () => _setEnabled(!_enabled),
           ),
         ),
-        Text('大小：${_appearance['size']}'),
-        Slider(
-          key: const ValueKey('floating_size_slider'),
-          min: 48,
-          max: 160,
-          divisions: 28,
-          value: _appearance['size']!.toDouble(),
-          onChanged: _loading
-              ? null
-              : (value) => _changeAppearance('size', value.round()),
-        ),
-        Text('圆角：${_appearance['radius']}'),
-        Slider(
-          min: 0,
-          max: 24,
-          divisions: 24,
-          value: _appearance['radius']!.toDouble(),
-          onChanged: _loading
-              ? null
-              : (value) => _changeAppearance('radius', value.round()),
-        ),
-        const Text('背景颜色'),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          children:
-              [
-                    0xFFBDEAFF,
-                    0xFFCCE8D4,
-                    0xFFFFE2BA,
-                    0xFFE2D6FF,
-                    0xFFF2F2F2,
-                    0xFF30343B,
-                  ]
-                  .map(
-                    (color) => InkWell(
-                      onTap: _loading
-                          ? null
-                          : () => _changeAppearance('color', color),
-                      borderRadius: BorderRadius.circular(18),
-                      child: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: Color(color),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: _appearance['color'] == color
-                                ? Theme.of(context).colorScheme.primary
-                                : Colors.grey,
-                            width: _appearance['color'] == color ? 3 : 1,
-                          ),
-                        ),
+        if (_enabled) ...[
+          Text('大小：${_appearance['size']}'),
+          Slider(
+            key: const ValueKey('floating_size_slider'),
+            min: 48,
+            max: 160,
+            divisions: 28,
+            value: _appearance['size']!.toDouble(),
+            onChanged: _loading
+                ? null
+                : (value) => _changeAppearance('size', value.round()),
+          ),
+          const Text('背景颜色'),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              ...[
+                0xFFBDEAFF,
+                0xFFCCE8D4,
+                0xFFFFE2BA,
+                0xFFE2D6FF,
+                0xFFF2F2F2,
+                0xFF30343B,
+              ].map(
+                (color) => InkWell(
+                  onTap: _loading
+                      ? null
+                      : () => _changeAppearance('color', color),
+                  borderRadius: BorderRadius.circular(18),
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Color(color),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: _appearance['color'] == color
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.grey,
+                        width: _appearance['color'] == color ? 3 : 1,
                       ),
                     ),
-                  )
-                  .toList(),
-        ),
-        TextButton(
-          onPressed: _loading ? null : _chooseCustomColor,
-          child: const Text('自定义颜色'),
-        ),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            onPressed: _loading
-                ? null
-                : () {
-                    _changeAppearance('size', 80);
-                    _changeAppearance('radius', 18);
-                    _changeAppearance('color', 0xFFBDEAFF);
-                  },
-            child: const Text('恢复默认'),
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: _loading ? null : _chooseCustomColor,
+                child: const Text('自定义颜色'),
+              ),
+              TextButton(
+                onPressed: _loading
+                    ? null
+                    : () {
+                        _changeAppearance('size', 64);
+                        _changeAppearance('color', 0xFFBDEAFF);
+                      },
+                child: const Text('恢复默认'),
+              ),
+            ],
           ),
-        ),
+        ],
       ],
     );
   }

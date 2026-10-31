@@ -100,21 +100,4 @@ void main() {
       expect(provider.history.length, beforeHistoryCount + 1);
     },
   );
-
-  test('rollcall and lottery animation modes persist independently', () async {
-    final provider = AppProvider();
-    _registerProviderTearDown(provider);
-    await provider.ready;
-
-    provider.setRollcallAnimationMode(AnimationMode.manualStop);
-    provider.setLotteryAnimationMode(AnimationMode.none);
-    await provider.waitForPendingConfigSave();
-
-    final reloadedProvider = AppProvider();
-    _registerProviderTearDown(reloadedProvider);
-    await reloadedProvider.ready;
-
-    expect(reloadedProvider.rollcallAnimationMode, AnimationMode.manualStop);
-    expect(reloadedProvider.lotteryAnimationMode, AnimationMode.none);
-  });
 }

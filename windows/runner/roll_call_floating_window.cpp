@@ -11,6 +11,9 @@
 namespace {
 constexpr wchar_t kWindowClassName[] = L"SECRANDOM_ROLL_CALL_FLOATING_WINDOW";
 constexpr UINT kEnsureTopmost = WM_APP + 20;
+// Corner radius tracks the shortcut size; at the 100px baseline it is 24px.
+constexpr int kCornerRadiusBaselinePixels = 24;
+constexpr int kCornerRadiusBaselineSize = 100;
 HWND tracked_window = nullptr;
 bool layer_check_pending = false;
 
@@ -52,13 +55,15 @@ RollCallFloatingWindow::RollCallFloatingWindow(HWND main_window)
 
 RollCallFloatingWindow::~RollCallFloatingWindow() { Destroy(); }
 
-void RollCallFloatingWindow::SetAppearance(int size, unsigned int color, int radius) {
+void RollCallFloatingWindow::SetAppearance(int size, unsigned int color) {
   size_ = size;
   color_ = color;
-  radius_ = radius;
   if (window_) {
     SetWindowPos(window_, nullptr, 0, 0, size_, size_, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-    HRGN region = CreateRoundRectRgn(0, 0, size_ + 1, size_ + 1, radius_ * 2, radius_ * 2);
+    const int corner_radius = size_ * kCornerRadiusBaselinePixels /
+                              kCornerRadiusBaselineSize;
+    HRGN region = CreateRoundRectRgn(0, 0, size_ + 1, size_ + 1,
+                                     corner_radius * 2, corner_radius * 2);
     if (!SetWindowRgn(window_, region, TRUE)) DeleteObject(region);
     InvalidateRect(window_, nullptr, TRUE);
   }
@@ -109,7 +114,7 @@ bool RollCallFloatingWindow::Show() {
     return false;
   }
 
-  SetAppearance(size_, color_, radius_);
+  SetAppearance(size_, color_);
   ShowWindow(window_, SW_SHOWNOACTIVATE);
   SetWindowPos(window_, HWND_TOPMOST, 0, 0, 0, 0,
                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
@@ -208,8 +213,11 @@ void RollCallFloatingWindow::Paint(HWND window, HDC device_context) {
   };
   const double luminance = 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue);
   SetTextColor(device_context, luminance > 0.4 ? RGB(35, 35, 35) : RGB(255, 255, 255));
+  // Negative height asks GDI for the em size, so the label scales with the
+  // window. One em per character makes the two-character label span about
+  // two thirds of the window side.
   HFONT font =
-      CreateFont(size_ / 4, 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+      CreateFont(-(size_ / 3), 0, 0, 0, FW_MEDIUM, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
                  OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                  DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei");
   HGDIOBJ old_font = SelectObject(device_context, font);

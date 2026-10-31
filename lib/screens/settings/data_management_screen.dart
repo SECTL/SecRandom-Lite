@@ -48,10 +48,8 @@ class _DataManagementBodyState extends State<DataManagementBody> {
 
   final Map<ExportType, bool> _exportOptions = {
     ExportType.history: true,
-    ExportType.lottery: true,
     ExportType.config: true,
     ExportType.students: true,
-    ExportType.prizes: true,
   };
 
   bool _isExporting = false;
@@ -128,12 +126,15 @@ class _DataManagementBodyState extends State<DataManagementBody> {
           children: [
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.upload, color: Theme.of(context).colorScheme.primary),
+              leading: Icon(
+                Icons.upload,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               title: Text(
                 '导出数据',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               subtitle: const Text('选择要导出的数据类型。'),
             ),
@@ -191,12 +192,15 @@ class _DataManagementBodyState extends State<DataManagementBody> {
           children: [
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.download, color: Theme.of(context).colorScheme.primary),
+              leading: Icon(
+                Icons.download,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               title: Text(
                 '导入数据',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               subtitle: const Text('从备份文件中恢复数据。'),
             ),
@@ -238,12 +242,15 @@ class _DataManagementBodyState extends State<DataManagementBody> {
           children: [
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.terminal, color: Theme.of(context).colorScheme.primary),
+              leading: Icon(
+                Icons.terminal,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               title: Text(
                 '日志管理',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
               subtitle: const Text('查看、导出或清除应用日志。'),
             ),
@@ -262,7 +269,9 @@ class _DataManagementBodyState extends State<DataManagementBody> {
               SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: _isLoadingLogInfo || _logCount == 0 ? null : _viewLogs,
+                  onPressed: _isLoadingLogInfo || _logCount == 0
+                      ? null
+                      : _viewLogs,
                   icon: const Icon(Icons.visibility, size: 18),
                   label: const Text('查看日志'),
                 ),
@@ -272,7 +281,9 @@ class _DataManagementBodyState extends State<DataManagementBody> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _isLoadingLogInfo || _logCount == 0 ? null : _exportLogs,
+                      onPressed: _isLoadingLogInfo || _logCount == 0
+                          ? null
+                          : _exportLogs,
                       icon: const Icon(Icons.download, size: 18),
                       label: const Text('导出'),
                     ),
@@ -280,7 +291,9 @@ class _DataManagementBodyState extends State<DataManagementBody> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _isLoadingLogInfo || _logCount == 0 ? null : _clearLogs,
+                      onPressed: _isLoadingLogInfo || _logCount == 0
+                          ? null
+                          : _clearLogs,
                       icon: const Icon(Icons.delete_outline, size: 18),
                       label: const Text('清除'),
                       style: OutlinedButton.styleFrom(
@@ -301,14 +314,10 @@ class _DataManagementBodyState extends State<DataManagementBody> {
     switch (type) {
       case ExportType.history:
         return '点名历史记录';
-      case ExportType.lottery:
-        return '抽奖历史记录';
       case ExportType.config:
         return '应用配置';
       case ExportType.students:
         return '学生名单';
-      case ExportType.prizes:
-        return '奖品名单';
     }
   }
 
@@ -316,14 +325,10 @@ class _DataManagementBodyState extends State<DataManagementBody> {
     switch (type) {
       case ExportType.history:
         return '包含所有班级的点名记录';
-      case ExportType.lottery:
-        return '包含所有奖池的抽奖记录';
       case ExportType.config:
         return '主题、动画模式等设置';
       case ExportType.students:
         return '所有班级的学生信息';
-      case ExportType.prizes:
-        return '所有奖池的奖品配置';
     }
   }
 
@@ -344,12 +349,12 @@ class _DataManagementBodyState extends State<DataManagementBody> {
       if (kIsWeb) {
         final result = await _exportService.exportDataAsBytes(selectedTypes);
         _exportService.downloadFile(result.fileName, result.bytes);
-        
+
         if (mounted) {
           _showSnackBar('导出成功！文件已开始下载');
         }
       } else {
-        String? savePath = await FilePicker.platform.getDirectoryPath(
+        String? savePath = await FilePicker.getDirectoryPath(
           dialogTitle: '选择导出保存位置',
         );
 
@@ -358,8 +363,11 @@ class _DataManagementBodyState extends State<DataManagementBody> {
           return;
         }
 
-        final filePath = await _exportService.exportData(selectedTypes, savePath);
-        
+        final filePath = await _exportService.exportData(
+          selectedTypes,
+          savePath,
+        );
+
         if (mounted) {
           _showSnackBar('导出成功！文件已保存到: $filePath');
         }
@@ -379,30 +387,23 @@ class _DataManagementBodyState extends State<DataManagementBody> {
     setState(() => _isImporting = true);
 
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['json', 'zip'],
-        withData: kIsWeb,
       );
 
-      if (result == null || result.files.isEmpty) {
+      if (file == null) {
         setState(() => _isImporting = false);
         return;
       }
 
       ImportResult importResult;
-      
+
       if (kIsWeb) {
-        final file = result.files.single;
-        final bytes = file.bytes;
-        if (bytes == null) {
-          _showSnackBar('无法读取文件内容', isError: true);
-          setState(() => _isImporting = false);
-          return;
-        }
+        final bytes = await file.readAsBytes();
         importResult = await _importService.importFromBytes(bytes, file.name);
       } else {
-        final filePath = result.files.single.path;
+        final filePath = file.path;
         if (filePath == null) {
           _showSnackBar('无法获取文件路径', isError: true);
           setState(() => _isImporting = false);
@@ -443,10 +444,8 @@ class _DataManagementBodyState extends State<DataManagementBody> {
 
       final options = ImportOptions(
         importHistory: importResult.historyRecords != null,
-        importLottery: importResult.lotteryRecords != null,
         importConfig: importResult.config != null,
         importStudents: importResult.students != null,
-        importPrizes: importResult.prizePools != null,
         mergeStrategy: strategy,
       );
 
@@ -456,8 +455,7 @@ class _DataManagementBodyState extends State<DataManagementBody> {
         if (success) {
           final appProvider = Provider.of<AppProvider>(context, listen: false);
           await appProvider.reloadData();
-          if (importResult.historyRecords != null ||
-              importResult.lotteryRecords != null) {
+          if (importResult.historyRecords != null) {
             await appProvider.syncLocalHistoryToCloud();
           }
           if (!mounted) return;
@@ -477,14 +475,17 @@ class _DataManagementBodyState extends State<DataManagementBody> {
     }
   }
 
-  Future<MergeStrategy?> _showImportDialog(ImportResult result, List<ConflictInfo> conflicts) {
+  Future<MergeStrategy?> _showImportDialog(
+    ImportResult result,
+    List<ConflictInfo> conflicts,
+  ) {
     final hasConflicts = conflicts.any((c) => c.hasConflict);
-    
+
     final conflictMap = <ConflictType, ConflictInfo>{};
     for (final conflict in conflicts) {
       conflictMap[conflict.type] = conflict;
     }
-    
+
     return showDialog<MergeStrategy>(
       context: context,
       builder: (context) => AlertDialog(
@@ -496,8 +497,9 @@ class _DataManagementBodyState extends State<DataManagementBody> {
             children: [
               const Text('将导入以下数据：'),
               const SizedBox(height: 16),
-              
-              if (result.historyRecords != null && result.historyRecords!.isNotEmpty)
+
+              if (result.historyRecords != null &&
+                  result.historyRecords!.isNotEmpty)
                 _buildConflictPreviewItem(
                   icon: Icons.history,
                   title: '点名历史',
@@ -505,23 +507,10 @@ class _DataManagementBodyState extends State<DataManagementBody> {
                   unit: '条记录',
                   conflict: conflictMap[ConflictType.history],
                 ),
-              
-              if (result.lotteryRecords != null && result.lotteryRecords!.isNotEmpty)
-                _buildConflictPreviewItem(
-                  icon: Icons.card_giftcard,
-                  title: '抽奖历史',
-                  importCount: result.lotteryRecords!.length,
-                  unit: '条记录',
-                  conflict: conflictMap[ConflictType.lottery],
-                ),
-              
+
               if (result.config != null)
-                _buildPreviewItem(
-                  Icons.settings,
-                  '应用配置',
-                  '主题、动画模式等设置',
-                ),
-              
+                _buildPreviewItem(Icons.settings, '应用配置', '主题、动画模式等设置'),
+
               if (result.students != null && result.students!.isNotEmpty)
                 _buildConflictPreviewItem(
                   icon: Icons.people,
@@ -531,59 +520,19 @@ class _DataManagementBodyState extends State<DataManagementBody> {
                   conflict: conflictMap[ConflictType.students],
                   showClassDetails: true,
                 ),
-              
-              if (result.prizePools != null && result.prizePools!.isNotEmpty) ...[
-                _buildConflictPreviewItem(
-                  icon: Icons.card_giftcard,
-                  title: '奖品名单',
-                  importCount: result.prizePools!.length,
-                  unit: '个奖池',
-                  conflict: conflicts.any((c) => c.type == ConflictType.prizes && c.hasConflict)
-                      ? ConflictInfo(type: ConflictType.prizes, existingCount: 1, importCount: 0)
-                      : null,
-                ),
-                ...result.prizePools!.entries.map((entry) {
-                  final poolConflict = conflicts.firstWhere(
-                    (c) => c.type == ConflictType.prizes && c.poolName == entry.key,
-                    orElse: () => ConflictInfo(
-                      type: ConflictType.prizes,
-                      poolName: entry.key,
-                      existingCount: 0,
-                      importCount: entry.value.length,
-                    ),
-                  );
-                  return Padding(
-                    padding: const EdgeInsets.only(left: 32, top: 4),
-                    child: Row(
-                      children: [
-                        Text(
-                          '• ${entry.key}: ${entry.value.length} 个奖品',
-                          style: TextStyle(
-                            color: poolConflict.hasConflict ? Colors.orange : null,
-                          ),
-                        ),
-                        if (poolConflict.hasConflict) ...[
-                          const SizedBox(width: 8),
-                          Text(
-                            '(已有 ${poolConflict.existingCount} 个)',
-                            style: const TextStyle(color: Colors.orange, fontSize: 12),
-                          ),
-                        ],
-                      ],
-                    ),
-                  );
-                }),
-              ],
-              
+
               if (result.hasWarnings) ...[
                 const SizedBox(height: 16),
                 const Text(
                   '警告：',
-                  style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    color: Colors.orange,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 ...result.warnings.map((w) => Text('• $w')),
               ],
-              
+
               if (hasConflicts) ...[
                 const SizedBox(height: 16),
                 const Text(
@@ -601,7 +550,8 @@ class _DataManagementBodyState extends State<DataManagementBody> {
                   child: const Text('取消导入'),
                 ),
                 OutlinedButton(
-                  onPressed: () => Navigator.pop(context, MergeStrategy.overwrite),
+                  onPressed: () =>
+                      Navigator.pop(context, MergeStrategy.overwrite),
                   child: const Text('覆盖'),
                 ),
                 FilledButton(
@@ -633,7 +583,7 @@ class _DataManagementBodyState extends State<DataManagementBody> {
   }) {
     final hasConflict = conflict?.hasConflict ?? false;
     final color = hasConflict ? Colors.orange : null;
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
@@ -641,7 +591,11 @@ class _DataManagementBodyState extends State<DataManagementBody> {
         children: [
           Row(
             children: [
-              Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+              Icon(
+                icon,
+                size: 20,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -660,10 +614,7 @@ class _DataManagementBodyState extends State<DataManagementBody> {
                           const SizedBox(width: 8),
                           Text(
                             '- 存在冲突',
-                            style: TextStyle(
-                              color: color,
-                              fontSize: 12,
-                            ),
+                            style: TextStyle(color: color, fontSize: 12),
                           ),
                         ],
                       ],
@@ -685,28 +636,32 @@ class _DataManagementBodyState extends State<DataManagementBody> {
           ),
           if (showClassDetails && conflict?.classStudents != null) ...[
             const SizedBox(height: 4),
-            ...conflict!.classStudents!.map((cs) => Padding(
-              padding: const EdgeInsets.only(left: 32, top: 2),
-              child: Row(
-                children: [
-                  Text(
-                    '• ${cs.className}',
-                    style: TextStyle(
-                      color: cs.existingCount > 0 ? Colors.orange : null,
-                      fontSize: 12,
+            ...conflict!.classStudents!.map(
+              (cs) => Padding(
+                padding: const EdgeInsets.only(left: 32, top: 2),
+                child: Row(
+                  children: [
+                    Text(
+                      '• ${cs.className}',
+                      style: TextStyle(
+                        color: cs.existingCount > 0 ? Colors.orange : null,
+                        fontSize: 12,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '已有 ${cs.existingCount} 人，导入 ${cs.importCount} 人',
-                    style: TextStyle(
-                      color: cs.existingCount > 0 ? Colors.orange : Colors.grey,
-                      fontSize: 11,
+                    const SizedBox(width: 8),
+                    Text(
+                      '已有 ${cs.existingCount} 人，导入 ${cs.importCount} 人',
+                      style: TextStyle(
+                        color: cs.existingCount > 0
+                            ? Colors.orange
+                            : Colors.grey,
+                        fontSize: 11,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            )),
+            ),
           ],
         ],
       ),
@@ -724,7 +679,10 @@ class _DataManagementBodyState extends State<DataManagementBody> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
                 Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
@@ -766,13 +724,14 @@ class _DataManagementBodyState extends State<DataManagementBody> {
           _showSnackBar('日志导出成功！文件已开始下载');
         }
       } else {
-        final savePath = await FilePicker.platform.getDirectoryPath(
+        final savePath = await FilePicker.getDirectoryPath(
           dialogTitle: '选择日志保存位置',
         );
 
         if (savePath == null) return;
 
-        final fileName = 'secrandom_logs_${DateTime.now().millisecondsSinceEpoch}.log';
+        final fileName =
+            'secrandom_logs_${DateTime.now().millisecondsSinceEpoch}.log';
         final file = File('$savePath${Platform.pathSeparator}$fileName');
         await file.writeAsString(logText);
 

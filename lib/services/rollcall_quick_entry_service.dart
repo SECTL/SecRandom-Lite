@@ -77,9 +77,8 @@ class RollCallQuickEntryService {
   Future<Map<String, int>> loadAppearance() async {
     final prefs = await SharedPreferences.getInstance();
     return {
-      'size': prefs.getInt('floating_size') ?? 80,
+      'size': prefs.getInt('floating_size') ?? 64,
       'color': prefs.getInt('floating_color') ?? 0xFFBDEAFF,
-      'radius': prefs.getInt('floating_radius') ?? 18,
     };
   }
 

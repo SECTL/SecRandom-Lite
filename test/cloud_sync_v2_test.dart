@@ -126,7 +126,7 @@ void main() {
     final service = CloudSyncService(api: api, store: store, deviceId: 'dev-a');
 
     await service.enqueueRecord('rollcall', rollcall('dev-a:1').toJson());
-    final ok = await service.pushAll(ownRollcall: {'张三': 1}, ownLottery: {});
+    final ok = await service.pushAll(ownRollcall: {'张三': 1});
 
     expect(ok, isTrue);
     expect(store.outbox.isEmpty, isTrue);
@@ -168,7 +168,7 @@ void main() {
     final a = CloudSyncService(api: api, store: storeB, deviceId: 'dev-b');
     await a.enqueueRecord('rollcall', rollcall('dev-b:1').toJson());
     await a.enqueueRecord('rollcall', rollcall('dev-b:2', name: '李四').toJson());
-    await a.pushAll(ownRollcall: {'张三': 1, '李四': 1}, ownLottery: {});
+    await a.pushAll(ownRollcall: {'张三': 1, '李四': 1});
 
     final b = CloudSyncService(api: api, store: storeA, deviceId: 'dev-a');
     final existing = <String, Map<String, dynamic>>{};
@@ -291,8 +291,8 @@ void main() {
 
     await a.enqueueRecord('rollcall', rollcall('dev-a:1').toJson());
     await b.enqueueRecord('rollcall', rollcall('dev-b:1').toJson());
-    await a.pushAll(ownRollcall: {'张三': 1}, ownLottery: {});
-    await b.pushAll(ownRollcall: {'张三': 1}, ownLottery: {});
+    await a.pushAll(ownRollcall: {'张三': 1});
+    await b.pushAll(ownRollcall: {'张三': 1});
 
     final seenByA = <String>{};
     await a.pullAll(
@@ -317,7 +317,7 @@ void main() {
       'rollcall',
       rollcall('dev-b:1', time: '2026-01-01 08:00:00').toJson(),
     );
-    await b.pushAll(ownRollcall: {}, ownLottery: {});
+    await b.pushAll(ownRollcall: {});
 
     final storeA = MemorySyncLocalStore();
     storeA.state.clearedAt['rollcall'] = DateTime(2026, 6, 1);
@@ -336,8 +336,8 @@ void main() {
     final storeB = MemorySyncLocalStore();
     final a = CloudSyncService(api: api, store: storeA, deviceId: 'dev-a');
     final b = CloudSyncService(api: api, store: storeB, deviceId: 'dev-b');
-    await a.pushAll(ownRollcall: {'张三': 3}, ownLottery: {});
-    await b.pushAll(ownRollcall: {'张三': 2, '李四': 1}, ownLottery: {});
+    await a.pushAll(ownRollcall: {'张三': 3});
+    await b.pushAll(ownRollcall: {'张三': 2, '李四': 1});
 
     final contributions = await a.fetchRemoteStats('rollcall');
     var total = 3;
@@ -480,19 +480,11 @@ void main() {
         rollcallClasses: {'1': DateTime(2026, 1, 2)},
       ),
     );
-    await b.syncClears(
-      CloudClearState(
-        rollcallAll: DateTime(2026, 2, 1),
-        lotteryAll: DateTime(2026, 3, 1),
-        lotteryPools: {'期末奖池': DateTime(2026, 4, 1)},
-      ),
-    );
+    await b.syncClears(CloudClearState(rollcallAll: DateTime(2026, 2, 1)));
 
     final merged = await a.fetchClearState();
     expect(merged.rollcallAll, DateTime(2026, 2, 1));
     expect(merged.rollcallClasses['1'], DateTime(2026, 1, 2));
-    expect(merged.lotteryAll, DateTime(2026, 3, 1));
-    expect(merged.lotteryPools['期末奖池'], DateTime(2026, 4, 1));
   });
 
   test('resetWorkspaceState 丢弃缓存状态并重新从存储读取', () async {

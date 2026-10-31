@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import '../../models/history_record.dart';
-import '../../models/lottery_record.dart';
 import '../../models/student.dart';
 
 /// 新记录 uid：`<deviceId>:<本地单调序号>`
@@ -13,10 +12,6 @@ String _legacyUid(String raw) =>
 /// 旧点名记录派生 uid（两设备对同一份旧数据派生结果一致）
 String deriveLegacyHistoryUid(HistoryRecord record) =>
     _legacyUid('${record.className}|${record.id}|${record.drawTime}');
-
-/// 旧抽奖记录派生 uid
-String deriveLegacyLotteryUid(LotteryRecord record) =>
-    _legacyUid('${record.poolName}|${record.id}');
 
 /// 旧学生派生 uid：两端对同一份旧名单派生结果一致。
 ///
@@ -32,16 +27,6 @@ String ensureHistoryUid(Map<String, dynamic> json) {
   final uid = _legacyUid(
     '${json['class_name'] ?? '1'}|${json['id'] ?? 0}|${json['draw_time'] ?? ''}',
   );
-  json['uid'] = uid;
-  return uid;
-}
-
-/// 读取抽奖记录 uid；旧记录没有 uid 时派生稳定 uid 并写回 JSON。
-String ensureLotteryUid(Map<String, dynamic> json) {
-  final raw = json['uid'];
-  final existing = raw is String ? raw.trim() : '';
-  if (existing.isNotEmpty) return existing;
-  final uid = _legacyUid('${json['poolName'] ?? ''}|${json['id'] ?? ''}');
   json['uid'] = uid;
   return uid;
 }

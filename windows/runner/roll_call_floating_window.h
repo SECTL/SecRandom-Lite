@@ -18,7 +18,7 @@ class RollCallFloatingWindow {
   RollCallFloatingWindow(const RollCallFloatingWindow&) = delete;
   RollCallFloatingWindow& operator=(const RollCallFloatingWindow&) = delete;
 
-  void SetAppearance(int size, unsigned int color, int radius);
+  void SetAppearance(int size, unsigned int color);
   bool Show();
   void Hide();
   void Destroy();
@@ -44,9 +44,8 @@ class RollCallFloatingWindow {
   HWINEVENTHOOK foreground_hook_ = nullptr;
   HWINEVENTHOOK reorder_hook_ = nullptr;
 
-  int size_ = 80;
+  int size_ = 64;
   unsigned int color_ = 0xFFBDEAFF;
-  int radius_ = 18;
   HWND main_window_ = nullptr;
   HWND window_ = nullptr;
   Callback opened_callback_;
