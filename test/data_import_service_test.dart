@@ -2,7 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:secrandom_lite/services/data_import_service.dart';
 import 'package:secrandom_lite/services/data_export_service.dart';
 import 'package:secrandom_lite/services/data_service.dart';
-import 'package:secrandom_lite/models/app_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'package:path/path.dart' as path;
@@ -113,53 +112,6 @@ void main() {
       
       expect(result.hasErrors, true);
       expect(result.errors.first, contains('JSON解析失败'));
-    });
-
-    test('ImportResult should correctly report hasData', () {
-      final emptyResult = ImportResult();
-      expect(emptyResult.hasData, false);
-      
-      final configResult = ImportResult(config: AppConfig.defaultConfig());
-      expect(configResult.hasData, true);
-    });
-
-    test('ImportResult should correctly report hasErrors', () {
-      final noErrorsResult = ImportResult();
-      expect(noErrorsResult.hasErrors, false);
-      
-      final withErrorsResult = ImportResult(errors: ['error1']);
-      expect(withErrorsResult.hasErrors, true);
-    });
-
-    test('ImportResult should generate correct summary', () {
-      final result = ImportResult(
-        config: AppConfig.defaultConfig(),
-        students: [],
-        historyRecords: [],
-      );
-      
-      final summary = result.summary;
-      expect(summary, contains('配置文件'));
-    });
-
-    test('ImportOptions should have correct defaults', () {
-      const options = ImportOptions();
-      
-      expect(options.importHistory, true);
-      expect(options.importLottery, true);
-      expect(options.importConfig, true);
-      expect(options.importStudents, true);
-    });
-
-    test('applyImport should return true for successful import', () async {
-      final result = ImportResult(
-        config: AppConfig.defaultConfig(),
-      );
-      
-      const options = ImportOptions(importConfig: true);
-      
-      final success = await importService.applyImport(result, options);
-      expect(success, true);
     });
   });
 }

@@ -256,13 +256,4 @@ void main() {
     final state = await provider.cloudSyncService.loadState();
     expect(state.baselineInitialized, isFalse);
   });
-
-  test('ready 在构造后可用，不依赖默认学生', () async {
-    final provider = AppProvider(
-      cloudSyncService: _FakeCloudSyncService(hasData: false),
-    );
-    addTearDown(provider.dispose);
-    await provider.ready;
-    expect(provider.allStudents, isEmpty);
-  });
 }

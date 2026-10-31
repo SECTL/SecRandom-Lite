@@ -22,7 +22,6 @@ void main() {
       final provider = AppProvider();
       await provider.ready;
 
-      provider.setFairDrawEnabled(false);
       provider.setNonRepeatEnabled(true);
       provider.setSelectCount(1);
       // 并行测试文件共享磁盘 data/ 目录，其它文件可能把 config 的动画模式
@@ -45,7 +44,6 @@ void main() {
       final provider = AppProvider();
       await provider.ready;
 
-      provider.setFairDrawEnabled(false);
       provider.setNonRepeatEnabled(false);
       provider.setSelectCount(1);
       provider.setRollcallAnimationMode(AnimationMode.none);
@@ -68,7 +66,6 @@ void main() {
     final provider = AppProvider();
     await provider.ready;
 
-    provider.setFairDrawEnabled(false);
     provider.setNonRepeatEnabled(true);
     provider.setSelectCount(1);
     provider.setRollcallAnimationMode(AnimationMode.none);

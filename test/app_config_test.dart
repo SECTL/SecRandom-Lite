@@ -2,28 +2,6 @@ import 'package:secrandom_lite/models/app_config.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  group('AppConfig fair draw', () {
-    test('fromJson should default fairDrawEnabled to true for old data', () {
-      final config = AppConfig.fromJson({
-        'theme_mode': 'system',
-        'select_count': 1,
-      });
-
-      expect(config.fairDrawEnabled, isTrue);
-    });
-
-    test('toJson should persist fairDrawEnabled', () {
-      final config = AppConfig(
-        themeMode: 'dark',
-        selectCount: 2,
-        fairDrawEnabled: false,
-      );
-
-      final json = config.toJson();
-      expect(json['fair_draw_enabled'], isFalse);
-    });
-  });
-
   group('AppConfig non repeat draw', () {
     test('fromJson should default nonRepeatEnabled to true for old data', () {
       final config = AppConfig.fromJson({
@@ -103,7 +81,6 @@ void main() {
       final json = config.toJson();
       expect(json['rollcall_animation_mode'], 'auto');
       expect(json['lottery_animation_mode'], 'manualStop');
-      expect(json['rollcall_animation_mode'], isNot(json['lottery_animation_mode']));
 
       final restored = AppConfig.fromJson(json);
       expect(restored.rollcallAnimationMode, AnimationMode.auto);

@@ -8,7 +8,7 @@ import 'settings/about_settings_screen.dart';
 import 'settings/account_settings_screen.dart';
 import 'settings/cloud_sync_settings_screen.dart';
 import 'settings/data_management_screen.dart';
-import 'settings/draw_settings_screen.dart';
+import 'settings/general_settings_screen.dart';
 import 'settings/lottery_settings_screen.dart';
 import 'settings/personalization_settings_screen.dart';
 import 'settings/rollcall_settings_screen.dart';
@@ -27,7 +27,7 @@ class SettingsScreen extends StatelessWidget {
     return SettingsLayout(
       title: '设置',
       items: _buildSettingItems(),
-      initialIndex: 1, // 默认显示点名名单
+      initialIndex: 2, // 默认显示点名名单
     );
   }
 
@@ -84,6 +84,12 @@ class SettingsScreen extends StatelessWidget {
         },
       ),
       SettingItem(
+        title: '通用',
+        icon: Icons.settings_outlined,
+        pageBuilder: () => const GeneralSettingsBody(),
+        routeName: '/settings/general',
+      ),
+      SettingItem(
         title: '点名名单',
         icon: Icons.people,
         pageBuilder: () => const RollCallSettingsBody(),
@@ -118,12 +124,6 @@ class SettingsScreen extends StatelessWidget {
             ),
           ];
         },
-      ),
-      SettingItem(
-        title: '抽取设置',
-        icon: Icons.casino,
-        pageBuilder: () => const DrawSettingsBody(),
-        routeName: '/settings/draw',
       ),
       SettingItem(
         title: '个性化',

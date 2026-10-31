@@ -76,7 +76,6 @@ class AppProvider with ChangeNotifier {
   Map<String, DateTime> _clearedPools = {};
 
   int _selectCount = 1;
-  bool _fairDrawEnabled = true;
   bool _nonRepeatEnabled = true;
   double _rollcallResultFontSize = 48;
   double _lotteryResultFontSize = 48;
@@ -93,7 +92,6 @@ class AppProvider with ChangeNotifier {
   int get selectCount => _selectCount;
   int get remainingCount => _remainingStudents.length;
   int get totalCount => _filteredStudents().length;
-  bool get fairDrawEnabled => _fairDrawEnabled;
   bool get nonRepeatEnabled => _nonRepeatEnabled;
   double get rollcallResultFontSize => _rollcallResultFontSize;
   double get lotteryResultFontSize => _lotteryResultFontSize;
@@ -170,7 +168,6 @@ class AppProvider with ChangeNotifier {
     final config = await _dataService.loadConfig();
     _themeMode = _parseThemeMode(config.themeMode);
     _selectCount = 1;
-    _fairDrawEnabled = config.fairDrawEnabled;
     _nonRepeatEnabled = config.nonRepeatEnabled;
     _rollcallResultFontSize = config.rollcallResultFontSize;
     _lotteryResultFontSize = config.lotteryResultFontSize;
@@ -233,7 +230,6 @@ class AppProvider with ChangeNotifier {
       selectedClass: _selectedClass,
       groups: _groups,
       classGroups: _classGroups,
-      fairDrawEnabled: _fairDrawEnabled,
       nonRepeatEnabled: _nonRepeatEnabled,
       rollcallResultFontSize: _rollcallResultFontSize,
       lotteryResultFontSize: _lotteryResultFontSize,
@@ -565,12 +561,6 @@ class AppProvider with ChangeNotifier {
     final maxCount = _filteredStudents().length;
     if (maxCount > 0 && count > maxCount) count = maxCount;
     _selectCount = count;
-    _saveConfig();
-    notifyListeners();
-  }
-
-  void setFairDrawEnabled(bool enabled) {
-    _fairDrawEnabled = enabled;
     _saveConfig();
     notifyListeners();
   }
@@ -990,21 +980,16 @@ class AppProvider with ChangeNotifier {
         ? _remainingStudents
         : _filteredStudents();
 
-    List<Student> picked;
-    if (_fairDrawEnabled) {
-      picked = _fairDrawService.draw(
-        candidates: drawCandidates,
-        stats: _rollcallStats,
-        count: _selectCount,
+    List<Student> picked = _fairDrawService.draw(
+      candidates: drawCandidates,
+      stats: _rollcallStats,
+      count: _selectCount,
+    );
+    if (picked.isEmpty) {
+      picked = _randomService.pickRandomStudents(
+        drawCandidates,
+        _selectCount,
       );
-      if (picked.isEmpty) {
-        picked = _randomService.pickRandomStudents(
-          drawCandidates,
-          _selectCount,
-        );
-      }
-    } else {
-      picked = _randomService.pickRandomStudents(drawCandidates, _selectCount);
     }
     return picked;
   }
@@ -1026,7 +1011,7 @@ class AppProvider with ChangeNotifier {
       id: newId,
       uid: newRecordUid(_deviceId ?? 'unknown', seq),
       name: nameStr,
-      drawMethod: _fairDrawEnabled ? 2 : 1,
+      drawMethod: 2,
       drawTime: timeStr,
       drawPeopleNumbers: picked.length,
       drawGroup: _selectedGroup ?? '所有小组',

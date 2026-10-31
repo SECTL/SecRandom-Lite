@@ -60,7 +60,9 @@ class AccountSettingsBody extends StatelessWidget {
               Icon(
                 Icons.account_circle_outlined,
                 size: 80,
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+                color: theme.colorScheme.onSurfaceVariant.withValues(
+                  alpha: 0.5,
+                ),
               ),
               const SizedBox(height: 24),
               Text(
@@ -70,7 +72,7 @@ class AccountSettingsBody extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                '登录后可同步数据、管理账户信息。\n将打开浏览器完成 SECTL 授权，授权后自动返回应用。',
+                '登录后可同步数据、查看账户信息。',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -132,7 +134,11 @@ class AccountSettingsBody extends StatelessWidget {
     );
   }
 
-  Widget _buildNarrowFlow(BuildContext context, userInfo, AuthProvider authProvider) {
+  Widget _buildNarrowFlow(
+    BuildContext context,
+    userInfo,
+    AuthProvider authProvider,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -151,16 +157,20 @@ class AccountSettingsBody extends StatelessWidget {
     );
   }
 
-  Widget _buildAvatar(BuildContext context, userInfo, {required double radius}) {
-    final hasAvatar = userInfo.avatarUrl != null && userInfo.avatarUrl!.isNotEmpty;
+  Widget _buildAvatar(
+    BuildContext context,
+    userInfo, {
+    required double radius,
+  }) {
+    final hasAvatar =
+        userInfo.avatarUrl != null && userInfo.avatarUrl!.isNotEmpty;
 
     return CircleAvatar(
       radius: radius,
-      backgroundImage:
-          hasAvatar ? CachedNetworkImageProvider(userInfo.avatarUrl!) : null,
-      onBackgroundImageError: hasAvatar
-          ? (_, __) {}
+      backgroundImage: hasAvatar
+          ? CachedNetworkImageProvider(userInfo.avatarUrl!)
           : null,
+      onBackgroundImageError: hasAvatar ? (_, __) {} : null,
       child: hasAvatar
           ? null
           : Text(
@@ -213,7 +223,8 @@ class AccountSettingsBody extends StatelessWidget {
           label: '权限等级',
           value: userInfo.permission,
         ),
-        if (userInfo.githubUsername != null && userInfo.githubUsername!.isNotEmpty)
+        if (userInfo.githubUsername != null &&
+            userInfo.githubUsername!.isNotEmpty)
           _buildDetailChip(
             context,
             icon: Icons.code,
@@ -242,7 +253,9 @@ class AccountSettingsBody extends StatelessWidget {
     final chip = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.55),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(
+          alpha: 0.55,
+        ),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -291,12 +304,16 @@ class AccountSettingsBody extends StatelessWidget {
     );
   }
 
-  Future<void> _copyValue(BuildContext context, String value, {required String label}) async {
+  Future<void> _copyValue(
+    BuildContext context,
+    String value, {
+    required String label,
+  }) async {
     await Clipboard.setData(ClipboardData(text: value));
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已复制$label')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('已复制$label')));
   }
 
   Widget _buildLogoutButton(BuildContext context, AuthProvider authProvider) {
@@ -314,7 +331,10 @@ class AccountSettingsBody extends StatelessWidget {
     );
   }
 
-  Future<void> _handleLogin(BuildContext context, AuthProvider authProvider) async {
+  Future<void> _handleLogin(
+    BuildContext context,
+    AuthProvider authProvider,
+  ) async {
     authProvider.clearError();
     try {
       await authProvider.login();
@@ -347,9 +367,9 @@ class AccountSettingsBody extends StatelessWidget {
   ) async {
     await authProvider.cancelLogin();
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已取消登录')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已取消登录')));
     }
   }
 
@@ -358,7 +378,7 @@ class AccountSettingsBody extends StatelessWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('退出登录'),
-        content: const Text('确定要退出登录吗？本地数据将保留。'),
+        content: const Text('要退出登录吗？本地数据将保留。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
@@ -369,9 +389,9 @@ class AccountSettingsBody extends StatelessWidget {
               Navigator.pop(dialogContext);
               await authProvider.logout();
               if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已退出登录')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('已退出登录')));
               }
             },
             child: const Text('退出'),

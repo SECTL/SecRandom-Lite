@@ -19,7 +19,6 @@ class AppConfig {
   final List<String> groups;
   final Map<String, List<String>>
   classGroups; // Map of class name to list of groups
-  final bool fairDrawEnabled;
   final bool nonRepeatEnabled;
   final double rollcallResultFontSize;
   final double lotteryResultFontSize;
@@ -32,7 +31,6 @@ class AppConfig {
     this.selectedClass,
     this.groups = const ['1'],
     this.classGroups = const {},
-    this.fairDrawEnabled = true,
     this.nonRepeatEnabled = true,
     this.rollcallResultFontSize = 48,
     this.lotteryResultFontSize = 48,
@@ -47,7 +45,6 @@ class AppConfig {
       'selected_class': selectedClass,
       'groups': groups,
       'class_groups': classGroups,
-      'fair_draw_enabled': fairDrawEnabled,
       'non_repeat_enabled': nonRepeatEnabled,
       'rollcall_result_font_size': rollcallResultFontSize,
       'lottery_result_font_size': lotteryResultFontSize,
@@ -74,7 +71,6 @@ class AppConfig {
             ),
           ) ??
           {},
-      fairDrawEnabled: json['fair_draw_enabled'] as bool? ?? true,
       nonRepeatEnabled: json['non_repeat_enabled'] as bool? ?? true,
       rollcallResultFontSize:
           (json['rollcall_result_font_size'] as num?)?.toDouble() ?? 48,
@@ -95,7 +91,6 @@ class AppConfig {
       selectedClass: null,
       groups: ['1'],
       classGroups: {},
-      fairDrawEnabled: true,
       nonRepeatEnabled: true,
       rollcallResultFontSize: 48,
       lotteryResultFontSize: 48,

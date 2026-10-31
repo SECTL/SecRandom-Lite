@@ -45,12 +45,22 @@ void isolateDataServiceDir() {
     DataService.resetWorkspaceToGuest();
   });
 
-  tearDownAll(() {
+  tearDownAll(() async {
     // 留到文件末尾才清：期间任何迟到的写入都只会落在这个临时目录里，
     // 而不是回落到 SDK 目录。
     DataService.debugDataDirOverride = null;
-    if (dir != null && dir!.existsSync()) {
-      dir!.deleteSync(recursive: true);
+    if (dir == null || !dir!.existsSync()) return;
+    // Windows 上文件句柄的释放可能滞后于最后一次写入，立即 deleteSync 偶尔会
+    // 命中“另一个程序正在使用此文件”。短暂重试几次，避免整个套件因清理失败
+    // 被判定为红。
+    for (var attempt = 0; ; attempt++) {
+      try {
+        dir!.deleteSync(recursive: true);
+        return;
+      } on FileSystemException {
+        if (attempt >= 9) rethrow;
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
     }
   });
 }

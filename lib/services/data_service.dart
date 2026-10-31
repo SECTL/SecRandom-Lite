@@ -297,11 +297,15 @@ class DataService {
     final lockHandle = await lockFile.open(mode: FileMode.writeOnlyAppend);
 
     try {
-      await lockHandle.lock(FileLock.exclusive);
+      // 并发读写配置时串行等待，避免非阻塞锁直接抛异常后句柄未释放。
+      await lockHandle.lock(FileLock.blockingExclusive);
       return await action(dirPath);
     } finally {
-      await lockHandle.unlock();
-      await lockHandle.close();
+      try {
+        await lockHandle.unlock();
+      } finally {
+        await lockHandle.close();
+      }
     }
   }
 

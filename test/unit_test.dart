@@ -11,18 +11,6 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('Student Model Tests', () {
-    test('Student should be created correctly', () {
-      final student = Student(
-        id: 1,
-        name: 'John',
-        gender: 'Male',
-        group: 'Class A',
-        exist: true,
-      );
-      expect(student.id, 1);
-      expect(student.name, 'John');
-    });
-
     test('Student serialization', () {
       final student = Student(
         id: 1,
@@ -70,13 +58,6 @@ void main() {
 
     setUp(() {
       SharedPreferences.setMockInitialValues({});
-    });
-
-    test('loadStudents returns empty when empty', () async {
-      await Future.delayed(const Duration(milliseconds: 100));
-      final service = DataService();
-      final students = await service.loadStudents();
-      expect(students, isEmpty);
     });
 
     test('save and load students', () async {

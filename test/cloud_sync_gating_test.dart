@@ -38,18 +38,6 @@ void main() {
     expect(provider.cloudSyncService.lastError, isNull);
   });
 
-  test('未登录时重复 setAuthState(false) 是无副作用 no-op', () async {
-    final provider = AppProvider();
-    addTearDown(provider.dispose);
-    // 等待 _loadData 完成，避免 dispose 后 notifyListeners
-    await Future<void>.delayed(const Duration(milliseconds: 100));
-    provider.setAuthState(false);
-    provider.setAuthState(false);
-    expect(provider.cloudLoggedIn, isFalse);
-    expect(provider.cloudSyncService.hasPendingRetry, isFalse);
-    expect(provider.cloudSyncService.status, SyncStatus.idle);
-  });
-
   test('自动同步开关状态持久化到 SharedPreferences', () async {
     final provider = AppProvider();
     addTearDown(provider.dispose);

@@ -207,12 +207,10 @@ class _RollcallHistoryDetailScreenState
       }
     }
 
-    final currentWeights = appProvider.fairDrawEnabled
-        ? FairWeightService().computeCurrentWeights(
-            students: filteredStudents,
-            history: filteredHistory,
-          )
-        : const <String, double>{};
+    final currentWeights = FairWeightService().computeCurrentWeights(
+      students: filteredStudents,
+      history: filteredHistory,
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -253,7 +251,6 @@ class _RollcallHistoryDetailScreenState
                   filteredHistory,
                   callCounts,
                   currentWeights,
-                  appProvider.fairDrawEnabled,
                 ),
               ],
             ),
@@ -370,7 +367,6 @@ class _RollcallHistoryDetailScreenState
     List<HistoryRecord> history,
     Map<String, int> callCounts,
     Map<String, double> currentWeights,
-    bool fairDrawEnabled,
   ) {
     final headers = _getHeaders();
     final allData = _getTableData(
@@ -378,7 +374,6 @@ class _RollcallHistoryDetailScreenState
       history,
       callCounts,
       currentWeights,
-      fairDrawEnabled,
     );
     _totalRows = allData.length;
     if (_currentRow == 0 && _totalRows > 0) {
@@ -498,7 +493,6 @@ class _RollcallHistoryDetailScreenState
     List<HistoryRecord> history,
     Map<String, int> callCounts,
     Map<String, double> currentWeights,
-    bool fairDrawEnabled,
   ) {
     switch (_filter.viewMode) {
       case '个人记录':
@@ -541,9 +535,8 @@ class _RollcallHistoryDetailScreenState
         }
         return sortedData.map((student) {
           final count = callCounts[student.name] ?? 0;
-          final weight = fairDrawEnabled
-              ? (currentWeights[student.name] ?? 1.0).toStringAsFixed(2)
-              : '-';
+          final weight = (currentWeights[student.name] ?? 1.0)
+              .toStringAsFixed(2);
           return [
             student.id.toString(),
             student.name,

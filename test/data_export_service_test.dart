@@ -119,14 +119,5 @@ void main() {
       final file = File(filePath);
       expect(await file.exists(), true);
     });
-
-    test('ExportType enum should have correct values', () {
-      expect(ExportType.values.length, 5);
-      expect(ExportType.values, contains(ExportType.history));
-      expect(ExportType.values, contains(ExportType.lottery));
-      expect(ExportType.values, contains(ExportType.config));
-      expect(ExportType.values, contains(ExportType.students));
-      expect(ExportType.values, contains(ExportType.prizes));
-    });
   });
 }

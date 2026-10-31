@@ -28,7 +28,6 @@ void main() {
     _registerProviderTearDown(provider);
     await provider.ready;
 
-    provider.setFairDrawEnabled(false);
     provider.setNonRepeatEnabled(true);
     provider.setSelectCount(1);
     provider.setRollcallAnimationMode(AnimationMode.manualStop);
@@ -56,7 +55,6 @@ void main() {
     _registerProviderTearDown(provider);
     await provider.ready;
 
-    provider.setFairDrawEnabled(false);
     provider.setNonRepeatEnabled(true);
     provider.setSelectCount(1);
     provider.setRollcallAnimationMode(AnimationMode.manualStop);
@@ -80,7 +78,6 @@ void main() {
       _registerProviderTearDown(provider);
       await provider.ready;
 
-      provider.setFairDrawEnabled(false);
       provider.setNonRepeatEnabled(true);
       provider.setSelectCount(1);
       provider.setRollcallAnimationMode(AnimationMode.none);
