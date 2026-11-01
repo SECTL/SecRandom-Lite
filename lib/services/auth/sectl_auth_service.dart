@@ -138,7 +138,7 @@ class SectlAuthService {
     final codeVerifier = generateCodeVerifier();
     final loopbackPort = _resolveLoopbackPort(targetPlatform);
     final session = PendingAuthSession(
-      state: _buildState(targetPlatform, codeVerifier),
+      state: _buildState(targetPlatform),
       codeVerifier: codeVerifier,
       targetPlatform: targetPlatform,
       redirectUri: _resolveRedirectUri(targetPlatform),
@@ -214,7 +214,18 @@ class SectlAuthService {
 
   Future<UserInfo?> completePendingLoginIfPresent() async {
     final pendingSession = await _tokenManager.getPendingAuthSession();
-    if (pendingSession == null) return null;
+    if (pendingSession == null) {
+      if (kIsWeb) {
+        final uri = getCurrentBrowserUri();
+        if (_looksLikeWebOAuthCallback(uri)) {
+          clearBrowserOAuthParams();
+          if (!_isWebCookieAuthCallback(uri)) {
+            throw StateError('No pending SECTL login session was found.');
+          }
+        }
+      }
+      return null;
+    }
 
     if (pendingSession.isExpired) {
       await _tokenManager.clearPendingAuthSession();
@@ -600,10 +611,7 @@ class SectlAuthService {
     throw UnsupportedError('SECTL login is not supported on this platform.');
   }
 
-  String _buildState(
-    PendingAuthTargetPlatform targetPlatform,
-    String codeVerifier,
-  ) {
+  String _buildState(PendingAuthTargetPlatform targetPlatform) {
     final payload = <String, dynamic>{
       'n': _randomToken(byteLength: 12),
       't': targetPlatform.name,
@@ -614,10 +622,6 @@ class SectlAuthService {
       payload['w'] = AuthConfig.webAppUrl.isNotEmpty
           ? AuthConfig.webAppUrl
           : resolveCurrentWebAppUrl();
-      payload['cv'] = codeVerifier;
-      payload['cid'] = AuthConfig.platformId;
-      payload['api'] = AuthConfig.baseUrl;
-      payload['ru'] = _resolveRedirectUri(targetPlatform);
     }
 
     if (targetPlatform == PendingAuthTargetPlatform.windows) {

@@ -278,6 +278,72 @@ void main() {
     );
 
     test(
+      'completeLoginFromCallbackUri redeems the returned code with pending verifier',
+      () async {
+        final tokenManager = TokenManager(store: InMemoryKeyValueStore());
+        await tokenManager.savePendingAuthSession(
+          PendingAuthSession(
+            state: 'state-value',
+            codeVerifier: 'stored-pkce-verifier',
+            targetPlatform: PendingAuthTargetPlatform.web,
+            redirectUri: AuthConfig.webOauthRedirectUri,
+            createdAt: DateTime.now(),
+          ),
+        );
+        Map<String, dynamic>? tokenRequest;
+        final service = SectlAuthService(
+          tokenManager: tokenManager,
+          httpClient: MockClient((request) async {
+            if (request.url.toString() == AuthConfig.publicIpLookupUrl) {
+              return http.Response(jsonEncode({'ip': '203.0.113.12'}), 200);
+            }
+            if (request.url.path.endsWith(AuthConfig.tokenEndpoint)) {
+              tokenRequest = jsonDecode(request.body) as Map<String, dynamic>;
+              return http.Response(
+                jsonEncode({
+                  'access_token': 'web-access-token',
+                  'refresh_token': 'web-refresh-token',
+                  'token_type': 'Bearer',
+                  'expires_in': 3600,
+                }),
+                200,
+              );
+            }
+            if (request.url.path.endsWith(AuthConfig.userInfoEndpoint)) {
+              expect(
+                request.headers['Authorization'],
+                'Bearer web-access-token',
+              );
+              return http.Response(
+                jsonEncode({
+                  'user_id': 'user_123',
+                  'email': 'user@example.com',
+                  'name': 'Test User',
+                }),
+                200,
+              );
+            }
+            return http.Response('{}', 404);
+          }),
+        );
+        addTearDown(service.dispose);
+
+        final user = await service.completeLoginFromCallbackUri(
+          Uri.parse(
+            'https://secrandom-lite.sectl.cn/?code=auth-code&state=state-value',
+          ),
+        );
+
+        expect(user.userId, 'user_123');
+        expect(tokenRequest?['code'], 'auth-code');
+        expect(tokenRequest?['code_verifier'], 'stored-pkce-verifier');
+        expect(tokenRequest?['redirect_uri'], AuthConfig.webOauthRedirectUri);
+        expect(await tokenManager.getAccessToken(), 'web-access-token');
+        expect(await tokenManager.getPendingAuthSession(), isNull);
+      },
+    );
+
+    test(
       'completeLoginFromCallbackUri clears pending session on auth error',
       () async {
         final tokenManager = TokenManager(store: InMemoryKeyValueStore());

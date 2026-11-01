@@ -75,3 +75,6 @@ TESTING_GUIDE.md
 # Editor / plugin directories
 ~
 .trae
+
+# Local docs (kept on disk, not tracked)
+/docs/
