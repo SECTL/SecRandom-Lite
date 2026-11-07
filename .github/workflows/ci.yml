@@ -1,17 +1,18 @@
 name: Test and Build Windows
 
 # Push-triggered verification: run the test suite and compile the Windows
-# runner on every pushed commit. Pushes to main additionally refresh the
-# rolling "Autobuild" release so the newest Windows build sits first on the
-# releases page; the versioned release pipeline in build.yml stays manual
-# (workflow_dispatch) so deliberate publishing is unaffected.
+# runner plus Linux debs (amd64 + arm64) on every pushed commit. Pushes to
+# main additionally refresh the rolling "Autobuild" release so the newest
+# builds sit first on the releases page; the versioned release pipeline in
+# build.yml stays manual (workflow_dispatch) so deliberate publishing is
+# unaffected.
 on:
   push:
     # Branches only — tag pushes are already covered by the release workflow.
     branches: ['**']
   workflow_dispatch:
 
-# Pushes to the same ref should not pile up Windows builds; the newest wins.
+# Pushes to the same ref should not pile up builds; the newest wins.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -91,20 +92,103 @@ jobs:
           name: windows-build
           path: build/windows/x64/runner/SecRandom_Lite_${{ steps.version.outputs.version }}_windows.zip
 
+  build-linux:
+    name: Build Linux (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Flutter Linux desktop is built natively. arm64 uses GitHub's free
+          # arm64 runner (public repositories only) instead of cross-compiling.
+          - arch: amd64
+            runner: ubuntu-latest
+            flutter_arch: x64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            flutter_arch: arm64
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev libgtk-3-0 libglib2.0-0 libsecret-1-dev
+
+      # Flutter's official Linux SDK archive is x64-only, so the arm64 runner
+      # cannot use subosito/flutter-action. A shallow clone of the pinned tag
+      # bootstraps the arm64 Dart SDK and engine artifacts on first run.
+      - name: Setup Flutter (arm64)
+        if: matrix.arch == 'arm64'
+        run: |
+          git clone --depth 1 --branch ${{ env.FLUTTER_VERSION }} https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+
+      - name: Setup Flutter (amd64)
+        if: matrix.arch == 'amd64'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: 'stable'
+          cache: true
+
+      - name: Bootstrap Flutter (arm64)
+        if: matrix.arch == 'arm64'
+        run: flutter --version
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Build Linux
+        run: flutter build linux --release
+
+      - name: Read app version
+        id: version
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version: *//p' pubspec.yaml | head -1 | sed 's/+.*//')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Package Linux
+        run: |
+          cd build/linux/${{ matrix.flutter_arch }}/release
+          mkdir -p pkg/DEBIAN
+          cat > pkg/DEBIAN/control << 'EOF'
+          Package: secrandom-lutter
+          Version: ${{ steps.version.outputs.version }}
+          Section: utils
+          Priority: optional
+          Architecture: ${{ matrix.arch }}
+          Maintainer: leafs825
+          Description: SecRandom Lutter - A Random Roll Call Application
+          EOF
+          sed -i 's/^          //' pkg/DEBIAN/control
+          cp -r bundle/* pkg/
+          dpkg-deb --build pkg SecRandom_Lite_${{ steps.version.outputs.version }}_linux_${{ matrix.arch }}.deb
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-build-${{ matrix.arch }}
+          path: build/linux/${{ matrix.flutter_arch }}/release/SecRandom_Lite_${{ steps.version.outputs.version }}_linux_${{ matrix.arch }}.deb
+
   release:
     name: Publish Autobuild
-    needs: [test, build-windows]
+    needs: [test, build-windows, build-linux]
     # The rolling release tracks main only; feature branches are just built.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download Windows artifact
+      - name: Download build artifacts
         uses: actions/download-artifact@v7
         with:
-          name: windows-build
-          path: artifacts/windows-build
+          path: artifacts
 
       # Releases are ordered by creation time, so replacing assets can never
       # move an old release to the top. Deleting release + tag and recreating
@@ -131,6 +215,8 @@ jobs:
             [Workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           files: |
             artifacts/windows-build/SecRandom_Lite_*_windows.zip
+            artifacts/linux-build-amd64/SecRandom_Lite_*_linux_amd64.deb
+            artifacts/linux-build-arm64/SecRandom_Lite_*_linux_arm64.deb
           draft: false
           prerelease: false
           make_latest: true
