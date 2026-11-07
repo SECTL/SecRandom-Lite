@@ -1,4 +1,4 @@
-name: Test and Build Windows
+name: Test and Build
 
 # Push-triggered verification: run the test suite and compile the Windows
 # runner plus Linux debs (amd64 + arm64) on every pushed commit. Pushes to
