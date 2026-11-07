@@ -1,8 +1,10 @@
 name: Test and Build Windows
 
 # Push-triggered verification: run the test suite and compile the Windows
-# runner on every pushed commit. The release pipeline in build.yml stays
-# manual (workflow_dispatch) so publishing remains a deliberate act.
+# runner on every pushed commit. Pushes to main additionally refresh the
+# rolling "Autobuild" release so the newest Windows build sits first on the
+# releases page; the versioned release pipeline in build.yml stays manual
+# (workflow_dispatch) so deliberate publishing is unaffected.
 on:
   push:
     # Branches only — tag pushes are already covered by the release workflow.
@@ -88,3 +90,49 @@ jobs:
         with:
           name: windows-build
           path: build/windows/x64/runner/SecRandom_Lite_${{ steps.version.outputs.version }}_windows.zip
+
+  release:
+    name: Publish Autobuild
+    needs: [test, build-windows]
+    # The rolling release tracks main only; feature branches are just built.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: windows-build
+          path: artifacts/windows-build
+
+      # Releases are ordered by creation time, so replacing assets can never
+      # move an old release to the top. Deleting release + tag and recreating
+      # them at the current commit is what makes Autobuild both newest and
+      # pointing at the latest build. --cleanup-tag removes the tag too; the
+      # API call covers the case where the tag survived an earlier partial run.
+      - name: Remove previous Autobuild release and tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete Autobuild --yes --cleanup-tag || true
+          gh api -X DELETE "repos/${GH_REPO}/git/refs/tags/Autobuild" || true
+
+      - name: Create Autobuild release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: Autobuild
+          name: Autobuild
+          target_commitish: ${{ github.sha }}
+          body: |
+            Automated build of `main` at `${{ github.sha }}`.
+
+            [Workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          files: |
+            artifacts/windows-build/SecRandom_Lite_*_windows.zip
+          draft: false
+          prerelease: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
