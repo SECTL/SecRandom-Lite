@@ -26,7 +26,7 @@ class SettingsScreen extends StatelessWidget {
     return SettingsLayout(
       title: '设置',
       items: _buildSettingItems(),
-      initialIndex: 2, // 默认显示点名名单
+      initialIndex: 1,
     );
   }
 
@@ -85,7 +85,7 @@ class SettingsScreen extends StatelessWidget {
         routeName: '/settings/general',
       ),
       SettingItem(
-        title: '点名名单',
+        title: '名单',
         icon: Icons.people,
         pageBuilder: () => const RollCallSettingsBody(),
         routeName: '/settings/rollcall',
@@ -117,7 +117,7 @@ class SettingsScreen extends StatelessWidget {
         routeName: '/settings/cloud',
       ),
       SettingItem(
-        title: '数据管理',
+        title: '数据',
         icon: Icons.storage,
         pageBuilder: () => const DataManagementBody(),
         routeName: '/settings/data',

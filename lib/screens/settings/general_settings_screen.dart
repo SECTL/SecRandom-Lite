@@ -337,12 +337,8 @@ class _FloatingWindowTileState extends State<_FloatingWindowTile> {
           child: ListTile(
             contentPadding: EdgeInsets.zero,
             leading: const Icon(Icons.picture_in_picture_alt_outlined),
-            title: Text(
-              '点名悬浮窗',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
+            // 与其他开关项保持一致，标题使用 ListTile 默认样式（不加粗）。
+            title: const Text('点名悬浮窗'),
             subtitle: const Text('点击打开点名页，悬浮窗保持显示'),
             trailing: _loaded
                 ? Switch(
