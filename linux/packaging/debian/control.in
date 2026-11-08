@@ -1,0 +1,16 @@
+Package: secrandom-lite
+Version: @PACKAGE_VERSION@
+Section: education
+Priority: optional
+Architecture: @ARCH@
+Maintainer: LeafS825 <LeafS825@users.noreply.github.com>
+Installed-Size: @INSTALLED_SIZE@
+Depends: libatk1.0-0t64 (>= 2.7.91) | libatk1.0-0 (>= 2.7.91), libc6 (>= 2.38), libcairo-gobject2 (>= 1.10.0), libcairo2 (>= 1.14.0), libepoxy0 (>= 1.0), libfontconfig1 (>= 2.12.6), libgcc-s1 (>= 3.0), libgdk-pixbuf-2.0-0 (>= 2.22.0), libglib2.0-0t64 (>= 2.80.0) | libglib2.0-0 (>= 2.80.0), libgtk-3-0t64 (>= 3.21.4) | libgtk-3-0 (>= 3.21.4), libharfbuzz0b (>= 0.6.0), libpango-1.0-0 (>= 1.29.4), libpangocairo-1.0-0 (>= 1.14.0), libsecret-1-0 (>= 0.7), libstdc++6 (>= 11), zlib1g (>= 1:1.1.4), libegl1, libgl1, libgles2
+Recommends: fonts-noto-cjk
+Conflicts: secrandom-lutter
+Replaces: secrandom-lutter
+Homepage: https://github.com/SECTL/SecRandom-Lite
+Description: random roll-call application for classrooms
+ SecRandom Lite is a Material Design 3 random roll-call and student picker
+ for classroom use. It supports student lists, several fair-draw modes,
+ roll-call history, data import/export, and optional cloud sync.

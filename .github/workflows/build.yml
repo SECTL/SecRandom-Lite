@@ -205,7 +205,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev libgtk-3-0 libglib2.0-0 libsecret-1-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config patchelf binutils libgtk-3-dev liblzma-dev libstdc++-12-dev libgtk-3-0 libglib2.0-0 libsecret-1-dev
 
       # Flutter's official Linux SDK archive is x64-only, so the arm64 runner
       # cannot use subosito/flutter-action. A shallow clone of the pinned tag
@@ -239,20 +239,11 @@ jobs:
 
       - name: Package Linux
         run: |
-          cd build/linux/${{ matrix.flutter_arch }}/release
-          mkdir -p pkg/DEBIAN
-          cat > pkg/DEBIAN/control << 'EOF'
-          Package: secrandom-lutter
-          Version: ${{ env.APP_VERSION }}
-          Section: utils
-          Priority: optional
-          Architecture: ${{ matrix.arch }}
-          Maintainer: leafs825
-          Description: SecRandom Lutter - A Random Roll Call Application
-          EOF
-          sed -i 's/^          //' pkg/DEBIAN/control
-          cp -r bundle/* pkg/
-          dpkg-deb --build pkg SecRandom_Lite_${{ env.APP_VERSION }}_linux_${{ matrix.arch }}.deb
+          bash linux/packaging/package_deb.sh \
+            --version "${{ env.APP_VERSION }}" \
+            --arch "${{ matrix.arch }}" \
+            --bundle "build/linux/${{ matrix.flutter_arch }}/release/bundle" \
+            --output "build/linux/${{ matrix.flutter_arch }}/release/SecRandom_Lite_${{ env.APP_VERSION }}_linux_${{ matrix.arch }}.deb"
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v7

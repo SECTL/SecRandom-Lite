@@ -1,0 +1,7 @@
+# The Flutter engine ships its own copies of FreeType and libjpeg, and
+# Flutter's AOT snapshot libapp.so is not a regular shared library.
+secrandom-lite binary: embedded-library
+secrandom-lite binary: shared-library-lacks-prerequisites
+# MiSans is embedded in the application (fsType 8: editable embedding), not
+# installed as a system font.
+secrandom-lite binary: truetype-font-prohibits-installable-embedding

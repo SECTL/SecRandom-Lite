@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=SecRandom Lite
+GenericName=Random Roll Call
+Comment=Random roll-call and student picker for classrooms
+Comment[zh_CN]=面向课堂场景的随机点名工具
+Exec=secrandom-lite
+Icon=secrandom-lite
+Terminal=false
+Categories=Education;Utility;
+Keywords=random;roll-call;classroom;student;点名;随机;
+StartupNotify=true
+StartupWMClass=com.leafs825.secrandom_lite

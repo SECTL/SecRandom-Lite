@@ -293,7 +293,10 @@ class ControlPanel extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF66CCFF),
               foregroundColor: Colors.white,
-              textStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -430,7 +433,10 @@ class ControlPanel extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xFF66CCFF),
               foregroundColor: Colors.white,
-              textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -605,7 +611,10 @@ class ControlPanel extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF66CCFF),
                 foregroundColor: Colors.white,
-                textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(4),
                 ),

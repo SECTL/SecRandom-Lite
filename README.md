@@ -32,7 +32,7 @@ SecRandom Lite 是 [SecRandom](https://github.com/SECTL/SecRandom) 的轻量级 
 | iOS | iOS 13.0 |
 | Windows | Windows 10 |
 | macOS | macOS 10.15 (Catalina) |
-| Linux | Ubuntu 18.04+ |
+| Linux | Debian 13+ / Ubuntu 24.04+ |
 | Web | 现代浏览器 |
 
 ## 下载/安装
@@ -50,6 +50,14 @@ SecRandom Lite 是 [SecRandom](https://github.com/SECTL/SecRandom) 的轻量级 
 
 1. 从 Releases 页面下载 Windows 安装包
 2. 解压后即可使用
+
+### Linux（Debian / Ubuntu）
+
+1. 从 Releases 页面下载 `.deb` 文件
+2. 运行 `sudo apt install ./SecRandom_Lite_*_linux_amd64.deb`
+3. 安装后可从应用菜单启动，或运行 `secrandom-lite`
+
+包名为 `secrandom-lite`，程序文件安装在 `/usr/lib/secrandom-lite`，由包管理器统一卸载。
 
 ### Web
 
@@ -102,12 +110,15 @@ secrandom_lite/
 │   │   └── name_display.dart     # 名字显示
 │   └── utils/                    # 工具类
 ├── assets/                       # 资源文件
+│   ├── fonts/                    # 内置 MiSans 字体（简体中文 + 拉丁字符子集）
+│   └── icon/                     # 应用图标
 ├── test/                         # 测试文件
 ├── android/                      # Android 平台代码
 ├── ios/                          # iOS 平台代码
 ├── windows/                      # Windows 平台代码
 ├── macos/                        # macOS 平台代码
 ├── linux/                        # Linux 平台代码
+│   └── packaging/                # Debian 打包脚本与模板
 └── web/                          # Web 平台代码
 ```
 
@@ -157,9 +168,13 @@ flutter build web --release
 # macOS
 flutter build macos --release
 
-# Linux
+# Linux（生成 .deb）
 flutter build linux --release
+bash linux/packaging/package_deb.sh --version 1.0.2 --arch amd64
 ```
+
+打包需要 `dpkg-deb`、`patchelf` 和 `binutils`；Debian/Ubuntu 上可执行
+`sudo apt install dpkg-dev patchelf binutils`。
 
 ## 运行测试
 
@@ -190,6 +205,8 @@ flutter test --coverage
 ## 许可证
 
 本项目基于 [GNU General Public License v3.0](https://opensource.org/licenses/GPL-3.0) 开源。
+
+内置的 MiSans 字体由小米科技有限责任公司提供，遵循《MiSans 字体知识产权许可协议》，详见 [hyperos.mi.com/font](https://hyperos.mi.com/font) 与 `assets/fonts/MiSans-NOTICE.txt`。
 
 --------
 

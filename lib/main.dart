@@ -4,6 +4,18 @@ import 'providers/app_provider.dart';
 import 'providers/auth_provider.dart';
 import 'screens/home_screen.dart';
 
+/// Bundled with the app so text does not depend on system font discovery.
+const String _fontFamily = 'MiSans';
+
+/// Used only for characters outside the bundled subset (rare hanzi, emoji).
+const List<String> _fontFamilyFallback = <String>[
+  'Noto Sans CJK SC',
+  'Noto Sans SC',
+  'Source Han Sans SC',
+  'WenQuanYi Micro Hei',
+  'sans-serif',
+];
+
 void main() {
   runApp(
     MultiProvider(
@@ -66,8 +78,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       themeMode: appProvider.themeMode,
       theme: ThemeData(
         useMaterial3: true,
-        fontFamily: 'Microsoft YaHei',
-        fontFamilyFallback: const ['PingFang SC', 'Heiti SC', 'sans-serif'],
+        fontFamily: _fontFamily,
+        fontFamilyFallback: _fontFamilyFallback,
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF66CCFF),
           primary: const Color(0xFF66CCFF),
@@ -77,8 +89,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       ),
       darkTheme: ThemeData(
         useMaterial3: true,
-        fontFamily: 'Microsoft YaHei',
-        fontFamilyFallback: const ['PingFang SC', 'Heiti SC', 'sans-serif'],
+        fontFamily: _fontFamily,
+        fontFamilyFallback: _fontFamilyFallback,
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF66CCFF),
           primary: const Color(0xFF66CCFF),

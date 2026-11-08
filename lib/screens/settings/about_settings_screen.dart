@@ -28,6 +28,7 @@ class AboutSettingsBody extends StatelessWidget {
   static const String _authorGithubUrl = 'https://github.com/LeafS825';
   static const String _organizationUrl = 'https://github.com/SECTL';
   static const String _organizationWebsiteUrl = 'https://sectl.cn';
+  static const String _fontUrl = 'https://hyperos.mi.com/font';
 
   @override
   Widget build(BuildContext context) {
@@ -115,6 +116,14 @@ class AboutSettingsBody extends StatelessWidget {
                 subtitle: const Text('LeafS825'),
                 trailing: const Icon(Icons.open_in_new),
                 onTap: () => _launchUrl(_authorGithubUrl),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.font_download_outlined),
+                title: const Text('内置字体'),
+                subtitle: const Text('MiSans（小米）'),
+                trailing: const Icon(Icons.open_in_new),
+                onTap: () => _launchUrl(_fontUrl),
               ),
             ],
           ),
