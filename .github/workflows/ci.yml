@@ -218,7 +218,9 @@ jobs:
             artifacts/linux-build-amd64/SecRandom_Lite_*_linux_amd64.deb
             artifacts/linux-build-arm64/SecRandom_Lite_*_linux_arm64.deb
           draft: false
-          prerelease: false
-          make_latest: true
+          prerelease: true
+          # Prereleases cannot carry the "Latest" badge; GitHub keeps it on
+          # the newest stable release instead.
+          make_latest: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
