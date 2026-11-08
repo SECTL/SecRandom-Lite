@@ -22,7 +22,7 @@ class AboutSettingsBody extends StatelessWidget {
   const AboutSettingsBody({super.key});
 
   static const String _appName = 'SecRandom Lite';
-  static const String _version = 'v1.0.2';
+  static const String _version = 'v1.1.0';
   static const String _repositoryUrl =
       'https://github.com/SECTL/SecRandom-Lite';
   static const String _authorGithubUrl = 'https://github.com/LeafS825';
