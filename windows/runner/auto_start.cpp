@@ -15,6 +15,14 @@ constexpr const wchar_t kRunKeyPath[] =
     L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 constexpr const wchar_t kValueName[] = L"SecRandom Lite";
 
+// Appended to the Run value's command. Windows only says "start this" at
+// logon, so without a marker of our own a logon launch is indistinguishable
+// from a manual one -- and the two must behave differently: the logon one
+// parks in the tray, the manual one opens the window. Kept narrow on purpose
+// (pure ASCII) so comparing it against the UTF-8 entrypoint arguments is a
+// byte-wise job.
+constexpr const char kAutoStartSwitch[] = "--autostart";
+
 // Case-insensitive substring search; registry paths keep their casing but a
 // user may have typed the key by hand with different casing.
 bool ContainsIgnoreCase(const std::wstring& haystack,
@@ -38,14 +46,34 @@ bool ContainsIgnoreCase(const std::wstring& haystack,
   return false;
 }
 
+// ASCII-only case folding for the entrypoint arguments. |towlower| would drag
+// the C locale into a comparison that only ever sees ASCII bytes.
+unsigned char AsciiLower(unsigned char character) {
+  return character >= 'A' && character <= 'Z'
+             ? static_cast<unsigned char>(character - 'A' + 'a')
+             : character;
+}
+
+// Widens an ASCII literal without touching the locale: the switch is defined
+// as ASCII above, and only ASCII reaches this function.
+std::wstring Widen(const char* text) {
+  std::wstring widened;
+  for (const char* cursor = text; cursor != nullptr && *cursor != '\0';
+       ++cursor) {
+    widened.push_back(static_cast<wchar_t>(*cursor));
+  }
+  return widened;
+}
+
 // The quoted command line stored in the Run value, e.g.
-// "C:\path\SecRandomLite.exe". Empty when the executable path is unknown.
+// "C:\path\SecRandomLite.exe" --autostart. Empty when the executable path is
+// unknown.
 std::wstring Command() {
   const std::wstring executable = auto_start::ExecutablePath();
   if (executable.empty()) {
     return std::wstring();
   }
-  return L"\"" + executable + L"\"";
+  return L"\"" + executable + L"\" " + Widen(kAutoStartSwitch);
 }
 
 // Reads the raw Run value; returns false when it is absent or unreadable.
@@ -72,6 +100,22 @@ bool ReadValue(std::wstring* value) {
   }
   *value = buffer;
   return true;
+}
+
+// Writes |command| over the existing Run value without creating it.
+bool WriteValue(const std::wstring& command) {
+  HKEY key = nullptr;
+  LSTATUS status = RegOpenKeyExW(HKEY_CURRENT_USER, kRunKeyPath, 0,
+                                 KEY_SET_VALUE | KEY_QUERY_VALUE, &key);
+  if (status != ERROR_SUCCESS) {
+    return false;
+  }
+  status = RegSetValueExW(
+      key, kValueName, 0, REG_SZ,
+      reinterpret_cast<const BYTE*>(command.c_str()),
+      static_cast<DWORD>((command.size() + 1) * sizeof(wchar_t)));
+  RegCloseKey(key);
+  return status == ERROR_SUCCESS;
 }
 
 }  // namespace
@@ -112,6 +156,11 @@ bool IsEnabled() {
   // The value must still name *this* executable. A stale entry left behind by
   // an install that moved or was uninstalled reads as "off", so the toggle
   // invites the user to repair it instead of claiming auto start works.
+  //
+  // Deliberately lenient about the trailing switch: an entry written before
+  // the switch existed still means "auto start is on". RefreshCommandIfEnabled
+  // upgrades such an entry on the next launch, so the toggle never flickers
+  // off for one run just because the command line is not in the new shape.
   return ContainsIgnoreCase(value, executable);
 }
 
@@ -151,6 +200,39 @@ bool SetEnabled(bool enabled) {
   // Read back rather than trusting the write: the toggle must reflect what
   // the registry actually holds, not what we asked it to hold.
   return IsEnabled() == enabled;
+}
+
+bool IsAutoStartSwitch(const std::string& argument) {
+  const std::string expected(kAutoStartSwitch);
+  if (argument.size() != expected.size()) {
+    return false;
+  }
+  for (size_t index = 0; index < expected.size(); ++index) {
+    if (AsciiLower(static_cast<unsigned char>(argument[index])) !=
+        AsciiLower(static_cast<unsigned char>(expected[index]))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void RefreshCommandIfEnabled() {
+  // Only an entry that already exists and still names this executable is
+  // eligible, so a fresh install keeps its "auto start is off until asked"
+  // promise; the rewrite itself changes no state, it only teaches an upgraded
+  // install to start quietly at logon.
+  if (!IsEnabled()) {
+    return;
+  }
+  const std::wstring desired = Command();
+  if (desired.empty()) {
+    return;
+  }
+  std::wstring current;
+  if (!ReadValue(&current) || current == desired) {
+    return;
+  }
+  WriteValue(desired);
 }
 
 }  // namespace auto_start

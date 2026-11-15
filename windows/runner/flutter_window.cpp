@@ -5,6 +5,7 @@
 #include "auto_start.h"
 #include "flutter/generated_plugin_registrant.h"
 #include "resource.h"
+#include "single_instance.h"
 #include "window_placement.h"
 
 namespace {
@@ -16,6 +17,10 @@ FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
 
 FlutterWindow::~FlutterWindow() {}
+
+void FlutterWindow::SetStartHidden(bool start_hidden) {
+  start_hidden_ = start_hidden;
+}
 
 bool FlutterWindow::OnCreate() {
   if (!Win32Window::OnCreate()) {
@@ -44,6 +49,7 @@ bool FlutterWindow::OnCreate() {
                                        std::make_unique<flutter::EncodableValue>());
   });
   taskbar_created_message_ = RegisterWindowMessageW(L"TaskbarCreated");
+  show_main_window_message_ = single_instance::ShowMainWindowMessage();
   tray_available_ = AddTrayIcon();
   quick_entry_channel_->SetMethodCallHandler(
       [this](const flutter::MethodCall<flutter::EncodableValue>& call,
@@ -106,6 +112,13 @@ bool FlutterWindow::OnCreate() {
       });
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
+    // A logon launch stays in the tray: popping the window up would cover
+    // whatever the user is doing at the very moment they sign in. The tray
+    // icon is the way back in, so the hidden start is only taken when that
+    // icon really exists -- without it the app would have no way to be reached.
+    if (start_hidden_ && tray_available_) {
+      return;
+    }
     this->Show();
   });
 
@@ -148,6 +161,15 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     // Explorer restarted: the tray icon is gone. Re-add it, and if that fails
     // drop out of tray mode so closing the window really exits the app.
     tray_available_ = AddTrayIcon();
+    return 0;
+  }
+
+  if (show_main_window_message_ != 0 &&
+      message == show_main_window_message_) {
+    // Another launch found this copy sitting in the tray and asked for it, so
+    // the user gets the window they were trying to open instead of a second
+    // copy that fights this one over the same files.
+    RestoreMainWindow(false);
     return 0;
   }
 
@@ -257,6 +279,12 @@ void FlutterWindow::RestoreMainWindow(bool open_roll_call) {
   window_placement::EnsureWindowOnScreen(GetHandle());
   ShowWindow(GetHandle(), SW_RESTORE);
   SetForegroundWindow(GetHandle());
+  // A window that has never been shown yet (a logon launch parked in the tray)
+  // would otherwise wait for the next vsync to paint; asking for a frame makes
+  // the first visible paint the current UI instead of an empty surface.
+  if (flutter_controller_) {
+    flutter_controller_->ForceRedraw();
+  }
   if (open_roll_call && quick_entry_channel_) {
     quick_entry_channel_->InvokeMethod("openRollCall",
                                        std::make_unique<flutter::EncodableValue>());

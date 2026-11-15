@@ -2,7 +2,9 @@
 #include <flutter/flutter_view_controller.h>
 #include <windows.h>
 
+#include "auto_start.h"
 #include "flutter_window.h"
+#include "single_instance.h"
 #include "utils.h"
 #include "window_placement.h"
 
@@ -23,6 +25,40 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
 
+  // A logon launch has to be told apart from the user double-clicking the
+  // icon: the first parks in the tray, the second opens the window. Windows
+  // launches both with the same command line, so the Run value carries a
+  // switch of our own. It is consumed here and kept out of the entrypoint
+  // arguments, which describe what the user asked for -- not how we got here.
+  bool started_at_logon = false;
+  for (auto argument = command_line_arguments.begin();
+       argument != command_line_arguments.end();) {
+    if (auto_start::IsAutoStartSwitch(*argument)) {
+      started_at_logon = true;
+      argument = command_line_arguments.erase(argument);
+    } else {
+      ++argument;
+    }
+  }
+
+  // An install that enabled auto start before the switch existed would keep
+  // opening the window at logon until the toggle was flipped twice. Rewriting
+  // the value here upgrades it; it only ever touches an entry that is already
+  // on and already points at this executable.
+  auto_start::RefreshCommandIfEnabled();
+
+  // The logon launch sits in the tray without a window, so a user who clicks
+  // the icon afterwards would start a second copy that knows nothing about the
+  // first -- and both write the same preference and history files. Hand the
+  // click to the copy that is already running instead.
+  if (!single_instance::Acquire()) {
+    if (!started_at_logon) {
+      single_instance::RequestShow();
+    }
+    ::CoUninitialize();
+    return EXIT_SUCCESS;
+  }
+
   project.set_dart_entrypoint_arguments(std::move(command_line_arguments));
 
   FlutterWindow window(project);
@@ -38,6 +74,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   if (window_placement::LoadMainWindowPosition(&saved_x, &saved_y)) {
     window.SetRestoredPosition(saved_x, saved_y);
   }
+
+  window.SetStartHidden(started_at_logon);
 
   if (!window.Create(L"SecRandom Lite", origin, size)) {
     return EXIT_FAILURE;

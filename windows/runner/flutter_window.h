@@ -19,6 +19,12 @@ class FlutterWindow : public Win32Window {
   explicit FlutterWindow(const flutter::DartProject& project);
   virtual ~FlutterWindow();
 
+  // Starts with the window hidden (tray only) instead of opening it. Used for
+  // the logon launch, which must not steal focus from whatever the user is
+  // already doing. Manual launches leave this off. Only honoured when the tray
+  // icon could actually be installed -- see OnCreate.
+  void SetStartHidden(bool start_hidden);
+
  protected:
   // Win32Window:
   bool OnCreate() override;
@@ -56,8 +62,11 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<RollCallFloatingWindow> roll_call_window_;
   NOTIFYICONDATA tray_icon_{};
   UINT taskbar_created_message_ = 0;
+  // Posted by a second launch that met this instance in the tray.
+  UINT show_main_window_message_ = 0;
   bool tray_available_ = false;
   bool exit_requested_ = false;
+  bool start_hidden_ = false;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

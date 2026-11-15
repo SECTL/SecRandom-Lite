@@ -24,6 +24,18 @@ bool SetEnabled(bool enabled);
 // Full path of the running executable, or an empty string on failure.
 std::wstring ExecutablePath();
 
+// True when |argument| is the switch the Run value appends to its command, so
+// a logon launch can be told apart from the user double-clicking the icon.
+// The kernel passes the whole command line on, hence the comparison lives
+// here next to the literal that is written into the registry.
+bool IsAutoStartSwitch(const std::string& argument);
+
+// Rewrites the Run value of an already enabled auto start so it carries the
+// current command. Only touches an entry that exists and still names this
+// executable: the app never turns auto start on by itself, it only upgrades a
+// value a previous build wrote without the switch.
+void RefreshCommandIfEnabled();
+
 }  // namespace auto_start
 
 #endif  // RUNNER_AUTO_START_H_

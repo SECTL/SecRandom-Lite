@@ -11,6 +11,7 @@ add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "main.cpp"
   "roll_call_floating_window.cpp"
+  "single_instance.cpp"
   "utils.cpp"
   "window_placement.cpp"
   "win32_window.cpp"

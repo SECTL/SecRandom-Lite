@@ -185,7 +185,7 @@ class _AutoStartTileState extends State<_AutoStartTile> {
       contentPadding: EdgeInsets.zero,
       secondary: const Icon(Icons.power_settings_new),
       title: const Text('登录时启动'),
-      subtitle: const Text('登录 Windows 后自动启动本应用'),
+      subtitle: const Text('登录 Windows 后自动启动，驻留托盘而不弹出主界面'),
       value: _enabled,
       onChanged: _loading ? null : _setEnabled,
     );
