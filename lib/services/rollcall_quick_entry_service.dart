@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/app_config.dart';
 import '../utils/logger.dart';
 import 'auth/platform_info.dart';
 
@@ -22,6 +23,8 @@ class RollCallQuickEntryService {
 
   static const _channel = MethodChannel('secrandom_lite/quick_entry');
   static const _enabledKey = 'rollcall_floating_window_enabled';
+  static const _sizeKey = 'floating_size';
+  static const _themeColorKey = 'theme_color';
 
   late final StreamController<void> _openRollCallController;
   final StreamController<bool> _floatingWindowStateController =
@@ -50,7 +53,12 @@ class RollCallQuickEntryService {
     try {
       if (supportsFloatingWindow) {
         final preferences = await SharedPreferences.getInstance();
-        await _channel.invokeMethod<void>('setFloatingAppearance', await loadAppearance());
+        // 同步读取后再发通道，避免与启动时的主题色同步交错，把旧颜色后发出去。
+        await _channel.invokeMethod<void>('setFloatingAppearance', {
+          'size': preferences.getInt(_sizeKey) ?? 64,
+          'color':
+              preferences.getInt(_themeColorKey) ?? AppConfig.defaultThemeColor,
+        });
         if (preferences.getBool(_enabledKey) ?? false) {
           // 开关是用户有意打开的，跨重启恢复；恢复不了就如实把开关关掉，
           // 避免设置里显示“已开启”而实际没有窗口。
@@ -74,21 +82,37 @@ class RollCallQuickEntryService {
     }
   }
 
+  /// 悬浮窗外观：大小是独立设置，颜色始终跟随应用主题色。
   Future<Map<String, int>> loadAppearance() async {
     final prefs = await SharedPreferences.getInstance();
     return {
-      'size': prefs.getInt('floating_size') ?? 64,
-      'color': prefs.getInt('floating_color') ?? 0xFFBDEAFF,
+      'size': prefs.getInt(_sizeKey) ?? 64,
+      'color': prefs.getInt(_themeColorKey) ?? AppConfig.defaultThemeColor,
     };
   }
 
   Future<void> saveAppearance(Map<String, int> appearance) async {
     if (!supportsFloatingWindow) return;
-    await _channel.invokeMethod<void>('setFloatingAppearance', appearance);
     final prefs = await SharedPreferences.getInstance();
-    for (final entry in appearance.entries) {
-      await prefs.setInt('floating_${entry.key}', entry.value);
-    }
+    final size = appearance['size'] ?? 64;
+    // 颜色始终以主题色为准，避免用旧外观参数把刚更新的主题色覆盖回去。
+    final color = prefs.getInt(_themeColorKey) ?? AppConfig.defaultThemeColor;
+    await _channel.invokeMethod<void>('setFloatingAppearance', {
+      'size': size,
+      'color': color,
+    });
+    await prefs.setInt(_sizeKey, size);
+  }
+
+  /// 应用主题色变化时同步给悬浮窗，并持久化供下次启动恢复。
+  Future<void> applyThemeColor(int color) async {
+    if (!supportsFloatingWindow) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_themeColorKey, color);
+    await _channel.invokeMethod<void>('setFloatingAppearance', {
+      'size': prefs.getInt(_sizeKey) ?? 64,
+      'color': color,
+    });
   }
 
   Future<bool> loadFloatingWindowEnabled() async {

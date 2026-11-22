@@ -206,64 +206,21 @@ class _FloatingWindowTileState extends State<_FloatingWindowTile> {
   bool _enabled = false;
   bool _loading = true;
   bool _loaded = false;
-  Map<String, int> _appearance = {'size': 64, 'color': 0xFFBDEAFF};
+  int _size = 64;
   Future<void> _pendingAppearance = Future<void>.value();
 
-  void _changeAppearance(String key, int value) {
-    setState(() => _appearance = {..._appearance, key: value});
-    final appearance = Map<String, int>.from(_appearance);
+  void _changeSize(int size) {
+    setState(() => _size = size);
     _pendingAppearance = _pendingAppearance.catchError((_) {}).then((_) async {
       try {
-        await _quickEntryService.saveAppearance(appearance);
+        await _quickEntryService.saveAppearance({'size': _size});
       } catch (_) {
         if (!mounted) return;
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('无法更新悬浮窗外观')));
+        ).showSnackBar(const SnackBar(content: Text('无法更新悬浮窗大小')));
       }
     });
-  }
-
-  Future<void> _chooseCustomColor() async {
-    final controller = TextEditingController(
-      text: _appearance['color']!.toRadixString(16).substring(2).toUpperCase(),
-    );
-    final color = await showDialog<int>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('自定义背景色'),
-          content: TextField(
-            controller: controller,
-            maxLength: 6,
-            decoration: const InputDecoration(
-              labelText: '六位十六进制颜色',
-              prefixText: '#',
-              hintText: 'BDEAFF',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () {
-                final text = controller.text.trim();
-                if (RegExp(r'^[0-9a-fA-F]{6}$').hasMatch(text)) {
-                  Navigator.pop(
-                    context,
-                    0xFF000000 | int.parse(text, radix: 16),
-                  );
-                }
-              },
-              child: const Text('确定'),
-            ),
-          ],
-        );
-      },
-    );
-    if (color != null && mounted) _changeAppearance('color', color);
   }
 
   @override
@@ -293,7 +250,7 @@ class _FloatingWindowTileState extends State<_FloatingWindowTile> {
       await _quickEntryService.initialize();
       enabled = await _quickEntryService.loadFloatingWindowEnabled();
       final appearance = await _quickEntryService.loadAppearance();
-      if (mounted) _appearance = appearance;
+      if (mounted) _size = appearance['size'] ?? 64;
     } catch (_) {
       enabled = false;
     }
@@ -351,67 +308,21 @@ class _FloatingWindowTileState extends State<_FloatingWindowTile> {
           ),
         ),
         if (_enabled) ...[
-          Text('大小：${_appearance['size']}'),
+          Text('大小：$_size'),
           Slider(
             key: const ValueKey('floating_size_slider'),
             min: 48,
             max: 160,
             divisions: 28,
-            value: _appearance['size']!.toDouble(),
-            onChanged: _loading
-                ? null
-                : (value) => _changeAppearance('size', value.round()),
+            value: _size.toDouble(),
+            onChanged: _loading ? null : (value) => _changeSize(value.round()),
           ),
-          const Text('背景颜色'),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              ...[
-                0xFFBDEAFF,
-                0xFFCCE8D4,
-                0xFFFFE2BA,
-                0xFFE2D6FF,
-                0xFFF2F2F2,
-                0xFF30343B,
-              ].map(
-                (color) => InkWell(
-                  onTap: _loading
-                      ? null
-                      : () => _changeAppearance('color', color),
-                  borderRadius: BorderRadius.circular(18),
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: Color(color),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: _appearance['color'] == color
-                            ? Theme.of(context).colorScheme.primary
-                            : Colors.grey,
-                        width: _appearance['color'] == color ? 3 : 1,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              TextButton(
-                onPressed: _loading ? null : _chooseCustomColor,
-                child: const Text('自定义颜色'),
-              ),
-              TextButton(
-                onPressed: _loading
-                    ? null
-                    : () {
-                        _changeAppearance('size', 64);
-                        _changeAppearance('color', 0xFFBDEAFF);
-                      },
-                child: const Text('恢复默认'),
-              ),
-            ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: _loading ? null : () => _changeSize(64),
+              child: const Text('恢复默认'),
+            ),
           ),
         ],
       ],

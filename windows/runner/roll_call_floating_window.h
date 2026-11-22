@@ -45,7 +45,7 @@ class RollCallFloatingWindow {
   HWINEVENTHOOK reorder_hook_ = nullptr;
 
   int size_ = 64;
-  unsigned int color_ = 0xFFBDEAFF;
+  unsigned int color_ = 0xFF66CCFF;
   HWND main_window_ = nullptr;
   HWND window_ = nullptr;
   Callback opened_callback_;

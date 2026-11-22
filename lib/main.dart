@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/app_provider.dart';
 import 'providers/auth_provider.dart';
 import 'screens/home_screen.dart';
+import 'services/rollcall_quick_entry_service.dart';
 
 /// Bundled with the app so text does not depend on system font discovery.
 const String _fontFamily = 'MiSans';
@@ -39,6 +42,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   late final AuthProvider _authProvider;
   late final AppProvider _appProvider;
   late final VoidCallback _authListener;
+  int? _appliedThemeColor;
 
   @override
   void initState() {
@@ -53,13 +57,31 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     _authProvider.addListener(_authListener);
     // 覆盖注册监听前已完成的会话恢复
     _authListener();
+    _appProvider.addListener(_syncFloatingWindowTheme);
+    _syncFloatingWindowTheme();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _authProvider.removeListener(_authListener);
+    _appProvider.removeListener(_syncFloatingWindowTheme);
     super.dispose();
+  }
+
+  /// 悬浮窗跟随应用主题色：只在颜色真正变化时下发一次，避免每次通知都走通道。
+  void _syncFloatingWindowTheme() {
+    final color = _appProvider.themeColor;
+    if (color == _appliedThemeColor) return;
+    _appliedThemeColor = color;
+    unawaited(
+      RollCallQuickEntryService.instance.applyThemeColor(color).catchError((
+        Object error,
+      ) {
+        // 平台不支持或通道尚未就绪时静默跳过，主题本身不受影响。
+        _appliedThemeColor = null;
+      }),
+    );
   }
 
   @override
@@ -72,6 +94,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final appProvider = Provider.of<AppProvider>(context);
+    final themeColor = Color(appProvider.themeColor);
 
     return MaterialApp(
       title: 'SecRandom Lite',
@@ -81,8 +104,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         fontFamily: _fontFamily,
         fontFamilyFallback: _fontFamilyFallback,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF66CCFF),
-          primary: const Color(0xFF66CCFF),
+          seedColor: themeColor,
+          primary: themeColor,
           brightness: Brightness.light,
         ),
         scaffoldBackgroundColor: const Color(0xFFF5F5F5),
@@ -92,8 +115,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         fontFamily: _fontFamily,
         fontFamilyFallback: _fontFamilyFallback,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF66CCFF),
-          primary: const Color(0xFF66CCFF),
+          seedColor: themeColor,
+          primary: themeColor,
           brightness: Brightness.dark,
         ),
         // 深色模式下通常不需要特定的 scaffoldBackgroundColor，使用默认的深灰色即可

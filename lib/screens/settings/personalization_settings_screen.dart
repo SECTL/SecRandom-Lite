@@ -57,6 +57,11 @@ class PersonalizationSettingsBody extends StatelessWidget {
               currentMode: appProvider.themeMode,
               onModeChanged: appProvider.setThemeMode,
             ),
+            const SizedBox(height: 12),
+            _ThemeColorTile(
+              currentColor: appProvider.themeColor,
+              onColorChanged: appProvider.setThemeColor,
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -92,6 +97,11 @@ class PersonalizationSettingsBody extends StatelessWidget {
             _ThemeModeTile(
               currentMode: appProvider.themeMode,
               onModeChanged: appProvider.setThemeMode,
+            ),
+            const SizedBox(height: 12),
+            _ThemeColorTile(
+              currentColor: appProvider.themeColor,
+              onColorChanged: appProvider.setThemeColor,
             ),
           ],
         ),
@@ -190,6 +200,155 @@ class _AnimationModeTile extends StatelessWidget {
             }
           },
         ),
+      ),
+    );
+  }
+}
+
+/// 应用主题色：色板、自定义十六进制与恢复默认。
+class _ThemeColorTile extends StatelessWidget {
+  const _ThemeColorTile({
+    required this.currentColor,
+    required this.onColorChanged,
+  });
+
+  final int currentColor;
+  final ValueChanged<int> onColorChanged;
+
+  static const List<int> _presets = [
+    0xFF66CCFF, // 天蓝（默认）
+    0xFF5B8FF9, // 蓝
+    0xFF52C41A, // 绿
+    0xFFFFA940, // 橙
+    0xFFEB2F96, // 粉
+    0xFF722ED1, // 紫
+  ];
+
+  String get _currentHex =>
+      currentColor.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase();
+
+  Future<void> _chooseCustomColor(BuildContext context) async {
+    final controller = TextEditingController(text: _currentHex);
+    final color = await showDialog<int>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('自定义主题色'),
+          content: TextField(
+            controller: controller,
+            maxLength: 6,
+            decoration: const InputDecoration(
+              labelText: '六位十六进制颜色',
+              prefixText: '#',
+              hintText: '66CCFF',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                final text = controller.text.trim();
+                if (RegExp(r'^[0-9a-fA-F]{6}$').hasMatch(text)) {
+                  Navigator.pop(
+                    context,
+                    0xFF000000 | int.parse(text, radix: 16),
+                  );
+                }
+              },
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      },
+    );
+    if (color != null) onColorChanged(color);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.color_lens_outlined),
+          title: const Text('主题色'),
+          subtitle: Text('当前 #$_currentHex'),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Wrap(
+            spacing: 12,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              ..._presets.map(
+                (color) => _ColorSwatch(
+                  color: color,
+                  selected: color == currentColor,
+                  onTap: () => onColorChanged(color),
+                ),
+              ),
+              TextButton(
+                onPressed: () => _chooseCustomColor(context),
+                child: const Text('自定义颜色'),
+              ),
+              TextButton(
+                onPressed: currentColor == AppConfig.defaultThemeColor
+                    ? null
+                    : () => onColorChanged(AppConfig.defaultThemeColor),
+                child: const Text('恢复默认'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ColorSwatch extends StatelessWidget {
+  const _ColorSwatch({
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final int color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final swatchColor = Color(color);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: swatchColor,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: selected
+                ? Theme.of(context).colorScheme.onSurface
+                : Theme.of(context).dividerColor,
+            width: selected ? 3 : 1,
+          ),
+        ),
+        child: selected
+            ? Icon(
+                Icons.check,
+                size: 18,
+                color: swatchColor.computeLuminance() > 0.5
+                    ? Colors.black
+                    : Colors.white,
+              )
+            : null,
       ),
     );
   }
