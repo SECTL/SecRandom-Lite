@@ -4,11 +4,8 @@
 // with code page 936 and non-ASCII text raises C4819/C2220, which are
 // promoted to errors. Chinese UI strings belong on the Dart side.
 //
-// Only origins are stored, never sizes. Sizes are re-derived from the default
-// value and scaled for whatever monitor hosts the window, which keeps a
-// window remembered on a 100% display from coming back half-sized on a 200%
-// one. Origins are stored exactly because they are already physical pixels
-// under PerMonitorV2 and must be restored verbatim.
+// Origins use physical pixels; main-window sizes use logical pixels so they
+// scale with the DPI of the monitor on which the window is restored.
 #include "window_placement.h"
 
 namespace {
@@ -17,6 +14,8 @@ constexpr const wchar_t kKeyPath[] =
     L"Software\\SecRandom Lite\\WindowPlacement";
 constexpr const wchar_t kMainX[] = L"MainX";
 constexpr const wchar_t kMainY[] = L"MainY";
+constexpr const wchar_t kMainWidth[] = L"MainWidth";
+constexpr const wchar_t kMainHeight[] = L"MainHeight";
 constexpr const wchar_t kFloatX[] = L"FloatX";
 constexpr const wchar_t kFloatY[] = L"FloatY";
 
@@ -148,6 +147,25 @@ bool LoadMainWindowPosition(int* x, int* y) {
 }
 
 void SaveMainWindowPosition(int x, int y) { WritePoint(kMainX, kMainY, x, y); }
+
+bool LoadMainWindowSize(int* width, int* height) {
+  int saved_width = 0;
+  int saved_height = 0;
+  if (!ReadPoint(kMainWidth, kMainHeight, &saved_width, &saved_height) ||
+      saved_width < 200 || saved_height < 200 || saved_width > 10000 ||
+      saved_height > 10000) {
+    return false;
+  }
+  *width = saved_width;
+  *height = saved_height;
+  return true;
+}
+
+void SaveMainWindowSize(int width, int height) {
+  if (width >= 200 && height >= 200 && width <= 10000 && height <= 10000) {
+    WritePoint(kMainWidth, kMainHeight, width, height);
+  }
+}
 
 bool LoadFloatingWindowPosition(int* x, int* y) {
   return ReadPoint(kFloatX, kFloatY, x, y);

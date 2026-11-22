@@ -18,6 +18,10 @@ namespace window_placement {
 bool LoadMainWindowPosition(int* x, int* y);
 void SaveMainWindowPosition(int x, int y);
 
+// Main window dimensions are stored in logical pixels.
+bool LoadMainWindowSize(int* width, int* height);
+void SaveMainWindowSize(int width, int height);
+
 // Reads the saved floating-window origin (physical pixels).
 bool LoadFloatingWindowPosition(int* x, int* y);
 void SaveFloatingWindowPosition(int x, int y);

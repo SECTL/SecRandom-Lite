@@ -307,5 +307,13 @@ void FlutterWindow::SaveMainWindowPosition() {
   RECT rect{};
   if (GetWindowRect(handle, &rect)) {
     window_placement::SaveMainWindowPosition(rect.left, rect.top);
+    if (!IsZoomed(handle)) {
+      const UINT dpi = GetDpiForWindow(handle);
+      if (dpi != 0) {
+        window_placement::SaveMainWindowSize(
+            MulDiv(rect.right - rect.left, 96, dpi),
+            MulDiv(rect.bottom - rect.top, 96, dpi));
+      }
+    }
   }
 }

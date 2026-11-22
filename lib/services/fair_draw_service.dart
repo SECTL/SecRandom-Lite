@@ -25,71 +25,31 @@ class FairDrawService {
     }
 
     final drawCount = min(count, candidates.length);
+    final studentCounts = stats != null
+        ? _fairWeightService.buildDrawCountsFromStats(candidates, stats)
+        : _fairWeightService.buildDrawCounts(candidates, classHistory ?? []);
 
-    try {
-      final studentCounts = stats != null
-          ? _fairWeightService.buildDrawCountsFromStats(candidates, stats)
-          : _fairWeightService.buildDrawCounts(candidates, classHistory ?? []);
-      var pool = _fairWeightService.applyAvgGapProtection(
-        candidates: candidates,
-        studentCounts: studentCounts,
-        drawCount: drawCount,
-        settings: settings,
-      );
-      if (pool.isEmpty) {
-        pool = List<Student>.from(candidates);
-      }
+    // Select from the least-drawn frontier, updating virtual counts after
+    // every pick. Random tie-breaking keeps equal-count candidates unbiased.
+    final remaining = List<Student>.from(candidates);
+    final virtualCounts = <String, int>{
+      for (final student in remaining)
+        student.name: studentCounts[student.name] ?? 0,
+    };
+    final result = <Student>[];
 
-      final weightMap = _fairWeightService.computeCurrentWeights(
-        students: pool,
-        history: classHistory,
-        stats: stats,
-        settings: settings,
-      );
-
-      final result = <Student>[];
-      final mutablePool = List<Student>.from(pool);
-      final mutableWeights = mutablePool
-          .map((student) => weightMap[student.name] ?? settings.baseWeight)
+    for (int i = 0; i < drawCount && remaining.isNotEmpty; i++) {
+      final minCount = virtualCounts.values.reduce(min);
+      final frontier = remaining
+          .where((student) => virtualCounts[student.name] == minCount)
           .toList();
-
-      for (int i = 0; i < drawCount && mutablePool.isNotEmpty; i++) {
-        final index = _pickWeightedIndex(mutableWeights);
-        result.add(mutablePool.removeAt(index));
-        mutableWeights.removeAt(index);
-      }
-
-      if (result.isNotEmpty) {
-        return result;
-      }
-    } catch (_) {
-      // Fallback to random draw below.
+      frontier.shuffle(_random);
+      final selected = frontier.first;
+      result.add(selected);
+      remaining.removeWhere((student) => student.id == selected.id);
+      virtualCounts[selected.name] = minCount + 1;
     }
 
-    return _drawRandomNoRepeat(candidates, drawCount);
-  }
-
-  int _pickWeightedIndex(List<double> weights) {
-    final totalWeight = weights.fold<double>(0, (sum, weight) => sum + weight);
-    if (totalWeight <= 0) {
-      return _random.nextInt(weights.length);
-    }
-
-    final randomValue = _random.nextDouble() * totalWeight;
-    double cumulativeWeight = 0;
-
-    for (int i = 0; i < weights.length; i++) {
-      cumulativeWeight += weights[i];
-      if (randomValue <= cumulativeWeight) {
-        return i;
-      }
-    }
-
-    return weights.length - 1;
-  }
-
-  List<Student> _drawRandomNoRepeat(List<Student> candidates, int drawCount) {
-    final pool = List<Student>.from(candidates)..shuffle(_random);
-    return pool.take(drawCount).toList();
+    return result;
   }
 }

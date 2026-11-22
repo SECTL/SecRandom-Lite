@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:secrandom_lite/models/draw_stats.dart';
 import 'package:secrandom_lite/models/history_record.dart';
 import 'package:secrandom_lite/models/student.dart';
 import 'package:secrandom_lite/services/fair_draw_service.dart';
@@ -130,6 +131,31 @@ void main() {
       );
 
       expect(picked, isEmpty);
+    });
+
+    test('repeated draws keep count gap below ten percent of average', () {
+      final service = FairDrawService(random: Random(7));
+      final stats = DrawStats();
+      final counts = <String, int>{
+        for (final student in candidates) student.name: 0,
+      };
+
+      for (int i = 0; i < 1003; i++) {
+        final picked = service.draw(
+          candidates: candidates,
+          stats: stats,
+          count: 1,
+        );
+        expect(picked, hasLength(1));
+        stats.increment(picked.single.name);
+        counts[picked.single.name] = counts[picked.single.name]! + 1;
+      }
+
+      final values = counts.values.toList();
+      final average = values.reduce((a, b) => a + b) / values.length;
+      final gap = values.reduce(max) - values.reduce(min);
+      expect(gap, lessThanOrEqualTo(1));
+      expect(gap, lessThan(average * 0.1));
     });
   });
 }

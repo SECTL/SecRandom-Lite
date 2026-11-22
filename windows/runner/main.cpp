@@ -75,6 +75,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     window.SetRestoredPosition(saved_x, saved_y);
   }
 
+  int saved_width = 0;
+  int saved_height = 0;
+  if (window_placement::LoadMainWindowSize(&saved_width, &saved_height)) {
+    size = Win32Window::Size(saved_width, saved_height);
+  }
+
   window.SetStartHidden(started_at_logon);
 
   if (!window.Create(L"SecRandom Lite", origin, size)) {
