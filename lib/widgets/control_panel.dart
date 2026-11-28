@@ -291,8 +291,8 @@ class ControlPanel extends StatelessWidget {
             key: startButtonKey,
             onPressed: _startButtonHandler(appProvider),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF66CCFF),
-              foregroundColor: Colors.white,
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
               textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
@@ -431,8 +431,8 @@ class ControlPanel extends StatelessWidget {
             key: startButtonKey,
             onPressed: _startButtonHandler(appProvider),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF66CCFF),
-              foregroundColor: Colors.white,
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
               textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
@@ -609,8 +609,8 @@ class ControlPanel extends StatelessWidget {
               key: startButtonKey,
               onPressed: _startButtonHandler(appProvider),
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF66CCFF),
-                foregroundColor: Colors.white,
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,

@@ -14,6 +14,7 @@ extension AnimationModeX on AnimationMode {
 
 class AppConfig {
   final String themeMode; // 'system', 'light', 'dark'
+  final int themeColor; // ARGB
   final int selectCount;
   final String? selectedClass;
   final List<String> groups;
@@ -23,8 +24,12 @@ class AppConfig {
   final double rollcallResultFontSize;
   final AnimationMode rollcallAnimationMode;
 
+  /// 默认主题色与 `main.dart` 原有的品牌蓝保持一致。
+  static const int defaultThemeColor = 0xFF66CCFF;
+
   AppConfig({
     required this.themeMode,
+    this.themeColor = defaultThemeColor,
     this.selectCount = 1,
     this.selectedClass,
     this.groups = const ['1'],
@@ -37,6 +42,7 @@ class AppConfig {
   Map<String, dynamic> toJson() {
     return {
       'theme_mode': themeMode,
+      'theme_color': themeColor,
       'select_count': selectCount,
       'selected_class': selectedClass,
       'groups': groups,
@@ -50,6 +56,7 @@ class AppConfig {
   factory AppConfig.fromJson(Map<String, dynamic> json) {
     return AppConfig(
       themeMode: json['theme_mode'] ?? 'system',
+      themeColor: (json['theme_color'] as num?)?.toInt() ?? defaultThemeColor,
       selectCount: json['select_count'] ?? 1,
       selectedClass: json['selected_class'],
       groups:

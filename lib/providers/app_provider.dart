@@ -38,6 +38,7 @@ class AppProvider with ChangeNotifier {
   bool _isDisposed = false;
   bool _isFinalizingRollCall = false;
   ThemeMode _themeMode = ThemeMode.system;
+  int _themeColor = AppConfig.defaultThemeColor;
   AnimationMode _rollcallAnimationMode = AnimationMode.auto;
   int _rollCallSessionId = 0;
   Future<void> _pendingConfigSave = Future<void>.value();
@@ -80,6 +81,7 @@ class AppProvider with ChangeNotifier {
   List<Student> get currentSelection => _currentSelection;
   bool get isRolling => _isRolling;
   ThemeMode get themeMode => _themeMode;
+  int get themeColor => _themeColor;
   AnimationMode get rollcallAnimationMode => _rollcallAnimationMode;
   int get selectCount => _selectCount;
   int get remainingCount => _remainingStudents.length;
@@ -153,6 +155,7 @@ class AppProvider with ChangeNotifier {
 
     final config = await _dataService.loadConfig();
     _themeMode = _parseThemeMode(config.themeMode);
+    _themeColor = config.themeColor;
     _selectCount = 1;
     _nonRepeatEnabled = config.nonRepeatEnabled;
     _rollcallResultFontSize = config.rollcallResultFontSize;
@@ -210,6 +213,7 @@ class AppProvider with ChangeNotifier {
   Future<void> _saveConfig() async {
     final config = AppConfig(
       themeMode: _themeModeToString(_themeMode),
+      themeColor: _themeColor,
       selectCount: _selectCount,
       selectedClass: _selectedClass,
       groups: _groups,
@@ -530,6 +534,13 @@ class AppProvider with ChangeNotifier {
 
   void setThemeMode(ThemeMode mode) {
     _themeMode = mode;
+    _saveConfig();
+    notifyListeners();
+  }
+
+  void setThemeColor(int color) {
+    if (color == _themeColor) return;
+    _themeColor = color;
     _saveConfig();
     notifyListeners();
   }

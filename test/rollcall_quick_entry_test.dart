@@ -112,11 +112,13 @@ void main() {
     skip: windowsSkip,
   );
 
-  test('外观参数发送到原生窗口并持久化', () async {
-    final appearance = {'size': 100, 'color': 0xFF30343B};
-    await service.saveAppearance(appearance);
+  test('外观大小发送到原生窗口并持久化，颜色跟随主题色', () async {
+    await service.applyThemeColor(0xFF30343B);
+    await service.saveAppearance({'size': 100, 'color': 0xFF30343B});
     expect(calls, contains('setFloatingAppearance'));
-    expect(await service.loadAppearance(), appearance);
+    final appearance = await service.loadAppearance();
+    expect(appearance['size'], 100);
+    expect(appearance['color'], 0xFF30343B);
   }, skip: windowsSkip);
 
   testWidgets('收到点名请求后主页切回点名页', (tester) async {
