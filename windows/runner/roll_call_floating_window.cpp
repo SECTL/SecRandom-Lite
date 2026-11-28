@@ -173,10 +173,14 @@ bool RollCallFloatingWindow::Create() {
 
   // The label is written as escapes because this file is compiled under a
   // non-Unicode code page where raw CJK literals fail the build.
+  // WS_EX_NOACTIVATE keeps the shortcut out of the activation chain: clicks
+  // and drags still reach it, but focus never leaves the window the user
+  // was typing in.
   window_ = CreateWindowEx(
-      WS_EX_TOPMOST | WS_EX_TOOLWINDOW, kWindowClassName, L"\x70B9\x540D",
-      WS_POPUP, placed ? x : CW_USEDEFAULT, placed ? y : CW_USEDEFAULT, size_,
-      size_, nullptr, nullptr, GetModuleHandle(nullptr), this);
+      WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, kWindowClassName,
+      L"\x70B9\x540D", WS_POPUP, placed ? x : CW_USEDEFAULT,
+      placed ? y : CW_USEDEFAULT, size_, size_, nullptr, nullptr,
+      GetModuleHandle(nullptr), this);
 
   if (window_) {
     // The stored origin was validated, but the CW_USEDEFAULT and
@@ -287,6 +291,12 @@ LRESULT RollCallFloatingWindow::HandleMessage(HWND window, UINT message,
     }
     case WM_ERASEBKGND:
       return 1;
+    case WM_MOUSEACTIVATE:
+      // Belt and braces next to WS_EX_NOACTIVATE: the click that opens
+      // rollcall must not activate this window or take focus from the
+      // window the user is working in. MA_NOACTIVATE still delivers the
+      // mouse messages, so the click reaches the handlers below.
+      return MA_NOACTIVATE;
     case WM_LBUTTONDOWN: {
       POINT cursor{};
       GetCursorPos(&cursor);

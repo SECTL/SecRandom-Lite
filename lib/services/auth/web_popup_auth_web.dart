@@ -2,47 +2,96 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
 
-import 'package:universal_html/html.dart' as html;
-
 import 'auth_config.dart';
 import 'auth_web_security.dart';
 
-extension on JSObject {
-  external JSAny? operator [](String key);
+/// 直接使用 `dart:js_interop` 操作原生 window，而不是 `dart:html` /
+/// `package:universal_html` 的 `WindowBase`。
+///
+/// 原因：`dart:html` 在访问「其它窗口」时会包装成 `_DOMWindowCrossFrame`。
+/// 该包装类每次访问都会新建实例（SDK 里明确写着 "TODO(vsm): Cache or
+/// implement equality"），因此：
+///   * `event.source` 与 `window.open()` 的返回值永远不 `identical`，
+///     合法的登录回调消息会被当成伪造消息丢弃；
+///   * `closed` / `location` 在 `WindowBase` 上是 external 成员，静态类型
+///     调用会被编译成裸属性读取，落到包装类上只会得到 `undefined`，
+///     于是「弹窗是否已关闭」永远判断为 false，界面卡在等待状态。
+@JS('window')
+external _MainWindow get _mainWindow;
+
+extension type _MainWindow(JSObject _) implements JSObject {
+  external num get screenLeft;
+  external num get screenTop;
+  external num get outerWidth;
+  external num get outerHeight;
+  external _PopupWindow? open(String url, String target, String features);
+  external void addEventListener(String type, JSFunction listener);
+  external void removeEventListener(String type, JSFunction listener);
+}
+
+extension type _PopupWindow(JSObject _) implements JSObject {
+  external bool get closed;
+  external _WindowLocation get location;
+  external void close();
+}
+
+extension type _WindowLocation(JSObject _) implements JSObject {
+  external String get href;
+}
+
+extension type _MessageEvent(JSObject _) implements JSObject {
+  external JSAny? get data;
+  external String get origin;
+  external JSObject? get source;
 }
 
 class WebAuthPopupSession {
   WebAuthPopupSession._(this._popupWindow) {
-    _messageSubscription = html.window.onMessage.listen((event) {
-      final payload = _normalizeMessagePayload(event.data);
-      final callbackUri = _extractTrustedCallbackUri(event, payload);
-      if (callbackUri == null) {
-        return;
-      }
-
-      if (!_callbackCompleter.isCompleted) {
-        _callbackCompleter.complete(callbackUri);
-      }
-      unawaited(close());
-    });
-
+    _messageListener = _handleWindowMessage.toJS;
+    _mainWindow.addEventListener('message', _messageListener!);
     Future.delayed(const Duration(milliseconds: 500), () {
-      if (_callbackCompleter.isCompleted) return;
+      if (_isClosed || _callbackCompleter.isCompleted) return;
       _startClosedTimer();
     });
   }
 
-  final html.WindowBase _popupWindow;
+  final _PopupWindow _popupWindow;
   final Completer<Uri> _callbackCompleter = Completer<Uri>();
-  StreamSubscription<html.MessageEvent>? _messageSubscription;
+  JSFunction? _messageListener;
   Timer? _closedTimer;
+  bool _isClosed = false;
 
   Future<Uri> waitForCallback() => _callbackCompleter.future;
 
-  Map<String, dynamic>? _normalizeMessagePayload(dynamic data) {
-    if (data is String) {
+  void _handleWindowMessage(JSObject rawEvent) {
+    final event = _MessageEvent(rawEvent);
+    final payload = _normalizeMessagePayload(_readEventData(event));
+    final callbackUri = _extractTrustedCallbackUri(event, payload);
+    if (callbackUri == null) {
+      return;
+    }
+
+    if (!_callbackCompleter.isCompleted) {
+      _callbackCompleter.complete(callbackUri);
+    }
+    unawaited(close());
+  }
+
+  Map<String, dynamic>? _normalizeMessagePayload(JSAny? data) {
+    if (data == null) {
+      return null;
+    }
+
+    final Object? decodedData;
+    try {
+      decodedData = data.dartify();
+    } catch (_) {
+      return null;
+    }
+
+    if (decodedData is String) {
       try {
-        final decoded = jsonDecode(data);
+        final decoded = jsonDecode(decodedData);
         if (decoded is Map<String, dynamic>) {
           return decoded;
         }
@@ -52,34 +101,22 @@ class WebAuthPopupSession {
       } catch (_) {
         return null;
       }
-    }
-
-    if (data is Map<String, dynamic>) {
-      return data;
-    }
-
-    if (data is Map) {
-      return data.map((key, value) => MapEntry(key.toString(), value));
-    }
-
-    try {
-      final object = data as JSObject;
-      final type = object['type'];
-      final href = object['href'];
-      if (type == null || href == null) {
-        return null;
-      }
-      return {
-        'type': (type as JSString).toDart,
-        'href': (href as JSString).toDart,
-      };
-    } catch (_) {
       return null;
     }
+
+    if (decodedData is Map<String, dynamic>) {
+      return decodedData;
+    }
+
+    if (decodedData is Map) {
+      return decodedData.map((key, value) => MapEntry(key.toString(), value));
+    }
+
+    return null;
   }
 
   Uri? _extractTrustedCallbackUri(
-    html.MessageEvent event,
+    _MessageEvent event,
     Map<String, dynamic>? payload,
   ) {
     if (payload == null || !_isTrustedPopupMessage(event, payload)) {
@@ -91,46 +128,84 @@ class WebAuthPopupSession {
   }
 
   bool _isTrustedPopupMessage(
-    html.MessageEvent event,
+    _MessageEvent event,
     Map<String, dynamic> payload,
   ) {
+    final origin = _readEventOrigin(event);
+    if (origin == null) {
+      return false;
+    }
+
     return isTrustedWebPopupCallbackMessage(
       messageType: payload['type'],
       href: payload['href'],
-      eventOrigin: event.origin,
-      isFromExpectedPopupWindow: _isExpectedPopupSource(event.source),
+      eventOrigin: origin,
+      isFromExpectedPopupWindow: _isExpectedPopupSource(
+        _readEventSource(event),
+      ),
       callbackBridgeUrl: AuthConfig.webOauthRedirectUri,
     );
   }
 
-  bool _isExpectedPopupSource(dynamic source) {
+  JSAny? _readEventData(_MessageEvent event) {
+    try {
+      return event.data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? _readEventOrigin(_MessageEvent event) {
+    try {
+      return event.origin;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  JSObject? _readEventSource(_MessageEvent event) {
+    try {
+      return event.source;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 这里是真正的 JS 对象身份比较（编译为 `===`）。
+  ///
+  /// 只有在「明确是别的窗口」时才拒绝；若浏览器没有暴露 `event.source`，
+  /// 则退回由 origin 校验 + 下游 pending session 的 state 校验把关，
+  /// 避免再次因为拿不到窗口句柄而把合法回调整条吞掉。
+  bool _isExpectedPopupSource(JSObject? source) {
     if (source == null) {
-      return false;
+      return true;
     }
 
     try {
-      return identical(source, _popupWindow) || source == _popupWindow;
+      return identical(source, _popupWindow);
     } catch (_) {
-      return false;
+      return true;
     }
   }
 
   void _startClosedTimer() {
     _closedTimer = Timer.periodic(const Duration(milliseconds: 300), (_) {
-      if (_callbackCompleter.isCompleted) {
+      if (_isClosed || _callbackCompleter.isCompleted) {
         _closedTimer?.cancel();
+        _closedTimer = null;
         return;
       }
 
       final callbackUri = _tryReadPopupCallbackUri();
-      if (callbackUri != null && !_callbackCompleter.isCompleted) {
-        _callbackCompleter.complete(callbackUri);
+      if (callbackUri != null) {
+        if (!_callbackCompleter.isCompleted) {
+          _callbackCompleter.complete(callbackUri);
+        }
         unawaited(close());
         return;
       }
 
-      final isClosed = _isPopupClosed();
-      if (isClosed && !_callbackCompleter.isCompleted) {
+      if (_isPopupClosed() && !_callbackCompleter.isCompleted) {
         _callbackCompleter.completeError(
           StateError('The SECTL login popup was closed before finishing.'),
         );
@@ -141,9 +216,7 @@ class WebAuthPopupSession {
 
   bool _isPopupClosed() {
     try {
-      final popupJs = _popupWindow as JSObject;
-      final closed = popupJs['closed'];
-      return (closed as JSBoolean).toDart;
+      return _popupWindow.closed;
     } catch (_) {
       return false;
     }
@@ -151,18 +224,16 @@ class WebAuthPopupSession {
 
   Uri? _tryReadPopupCallbackUri() {
     try {
-      final location = _popupWindow.location as JSObject;
-      final href = location['href'];
-      if (href == null) {
-        return null;
-      }
-
-      final hrefString = (href as JSString).toDart;
+      final hrefString = _popupWindow.location.href;
       if (hrefString.isEmpty) {
         return null;
       }
 
-      final uri = Uri.parse(hrefString);
+      final uri = Uri.tryParse(hrefString);
+      if (uri == null) {
+        return null;
+      }
+
       if (uri.queryParameters.containsKey('code') ||
           uri.queryParameters.containsKey('error') ||
           uri.queryParameters[AuthConfig.webCookieAuthSignalKey] ==
@@ -170,16 +241,26 @@ class WebAuthPopupSession {
         return uri;
       }
     } catch (_) {
-      // Ignore cross-origin access errors until the popup returns to our origin.
+      // 弹窗还在其它源上时读取 location 会抛异常，等它回到本站再看。
     }
     return null;
   }
 
   Future<void> close() async {
+    _isClosed = true;
     _closedTimer?.cancel();
     _closedTimer = null;
-    await _messageSubscription?.cancel();
-    _messageSubscription = null;
+
+    final listener = _messageListener;
+    if (listener != null) {
+      _messageListener = null;
+      try {
+        _mainWindow.removeEventListener('message', listener);
+      } catch (_) {
+        // Ignore browser interop failures.
+      }
+    }
+
     try {
       _popupWindow.close();
     } catch (_) {
@@ -191,10 +272,20 @@ class WebAuthPopupSession {
 Future<WebAuthPopupSession?> openWebAuthPopup(String url) async {
   const width = 540;
   const height = 760;
-  final screenLeft = html.window.screenLeft ?? 0;
-  final screenTop = html.window.screenTop ?? 0;
-  final outerWidth = html.window.outerWidth;
-  final outerHeight = html.window.outerHeight;
+
+  num screenLeft = 0;
+  num screenTop = 0;
+  num outerWidth = width;
+  num outerHeight = height;
+  try {
+    screenLeft = _mainWindow.screenLeft;
+    screenTop = _mainWindow.screenTop;
+    outerWidth = _mainWindow.outerWidth;
+    outerHeight = _mainWindow.outerHeight;
+  } catch (_) {
+    // 取不到窗口尺寸时按默认值居中。
+  }
+
   final left = screenLeft + ((outerWidth - width) / 2).round();
   final top = screenTop + ((outerHeight - height) / 2).round();
 
@@ -212,15 +303,25 @@ Future<WebAuthPopupSession?> openWebAuthPopup(String url) async {
     'top=$top',
   ].join(',');
 
-  final popup = html.window.open(url, 'sectl_auth_popup', features);
+  final _PopupWindow? popup;
   try {
-    final popupJs = popup as JSObject;
-    final closed = popupJs['closed'];
-    if (closed is JSBoolean && closed.toDart) {
+    popup = _mainWindow.open(url, 'sectl_auth_popup', features);
+  } catch (_) {
+    return null;
+  }
+
+  if (popup == null) {
+    // 被浏览器拦截时返回 null，由调用方退化为整页跳转。
+    return null;
+  }
+
+  try {
+    if (popup.closed) {
       return null;
     }
   } catch (_) {
     // Ignore browser interop failures and continue with popup session.
   }
+
   return WebAuthPopupSession._(popup);
 }

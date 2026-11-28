@@ -8,6 +8,8 @@
 // A small always-on-top square window that acts only as a rollcall shortcut.
 // Clicking it brings the main window forward and asks Dart to open the
 // rollcall page; the shortcut itself stays visible.
+// It is deliberately non-activating: showing, dragging or clicking it
+// never pulls focus away from whatever the user was doing.
 class RollCallFloatingWindow {
  public:
   using Callback = std::function<void()>;
